@@ -47,6 +47,7 @@ import {
   Shuffle,
   Users,
   Loader2,
+  Crown,
 } from "lucide-react";
 
 const formSchema = z.object({
@@ -56,7 +57,7 @@ const formSchema = z.object({
     .regex(/^2[1-4](BCE|BIT|BCH|BEC)\d{4}$/i, "Invalid VIT Registration Number."),
   teamName: z.string().optional(),
   teamId: z.string().optional(),
-  event: z.custom<EventKey>(),
+  event: z.custom<EventKey>((val) => val, 'Please select an event.'),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -105,7 +106,6 @@ export default function HomePage() {
       regNo: "",
       teamName: "",
       teamId: "",
-      event: "de-crypt",
     },
   });
 
@@ -138,31 +138,30 @@ export default function HomePage() {
     try {
       let body;
       let url;
+
+      if (!values.event) {
+        toast({ variant: "destructive", title: "Error", description: "Please select an event." });
+        setIsLoading(false);
+        return;
+      }
+      
+      const commonPayload = {
+        userName: values.name,
+        regNo: values.regNo.toUpperCase(),
+        event: values.event,
+      };
+
       switch (endpoint) {
         case "create":
-          body = JSON.stringify({
-            userName: values.name,
-            teamName: values.teamName,
-            regNo: values.regNo.toUpperCase(),
-            event: values.event,
-          });
+          body = JSON.stringify({ ...commonPayload, teamName: values.teamName });
           url = "/api/teams";
           break;
         case "join":
-          body = JSON.stringify({
-            userName: values.name,
-            teamId: values.teamId,
-            regNo: values.regNo.toUpperCase(),
-            event: values.event,
-          });
+          body = JSON.stringify({ ...commonPayload, teamId: values.teamId });
           url = "/api/teams/join";
           break;
         case "join-random":
-          body = JSON.stringify({
-            userName: values.name,
-            regNo: values.regNo.toUpperCase(),
-            event: values.event,
-          });
+          body = JSON.stringify(commonPayload);
           url = "/api/teams/join-random";
           break;
       }
@@ -189,6 +188,8 @@ export default function HomePage() {
     navigator.clipboard.writeText(currentTeam.id);
     toast({ title: "Team ID copied to clipboard!" });
   };
+  
+  const isLeader = currentUser?.id === currentTeam?.leaderId;
 
   if (isTeamViewLoading) {
     return (
@@ -209,18 +210,19 @@ export default function HomePage() {
           <p className="font-headline text-3xl text-foreground pt-2">
             {currentTeam.name}
           </p>
+          <CardDescription>Event: {EVENTS.find(e => e.key === currentTeam.event)?.name}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="flex items-center space-x-4">
             <Input value={currentTeam.id} readOnly className="font-mono" />
-            <Button variant="outline" size="icon" onClick={copyTeamId}>
+            <Button variant="outline" size="icon" onClick={copyTeamId} title="Copy Team ID">
               <Copy className="h-4 w-4" />
             </Button>
           </div>
           <Dialog>
             <DialogTrigger asChild>
               <Button className="w-full" variant="secondary">
-                <Users className="mr-2 h-4 w-4" /> View Team Members
+                <Users className="mr-2 h-4 w-4" /> View Team Members ({currentTeam.members.length}/{4})
               </Button>
             </DialogTrigger>
             <DialogContent>
@@ -231,8 +233,9 @@ export default function HomePage() {
               </DialogHeader>
               <ul className="space-y-2 font-mono">
                 {currentTeam.members.map((member) => (
-                  <li key={member.id} className="p-2 bg-muted/50 rounded-md">
+                  <li key={member.id} className="p-2 bg-muted/50 rounded-md flex items-center">
                     {member.name} ({member.id})
+                    {member.id === currentTeam.leaderId && <Crown className="ml-2 h-4 w-4 text-primary" title="Team Leader"/>}
                   </li>
                 ))}
               </ul>
@@ -246,8 +249,11 @@ export default function HomePage() {
               sessionStorage.clear();
               setCurrentUser(null);
               setCurrentTeam(null);
-              toast({ title: "You have left the team." });
+              toast({ title: "You have left your team." });
+              // Here you would also call an API to remove the user from the team in a real app
             }}
+            disabled={isLeader && currentTeam.members.length > 1}
+            title={isLeader && currentTeam.members.length > 1 ? "Leader cannot leave a team with members." : "Leave Team"}
           >
             Leave Team
           </Button>
@@ -260,8 +266,8 @@ export default function HomePage() {
     <Tabs defaultValue="create" className="max-w-2xl mx-auto">
       <TabsList className="grid w-full grid-cols-3">
         <TabsTrigger value="create">Create</TabsTrigger>
-        <TabsTrigger value="join">Join</TabsTrigger>
-        <TabsTrigger value="random">Random</TabsTrigger>
+        <TabsTrigger value="join" disabled={!!currentTeam}>Join</TabsTrigger>
+        <TabsTrigger value="random" disabled={!!currentTeam}>Random</TabsTrigger>
       </TabsList>
       <Form {...form}>
         <form>

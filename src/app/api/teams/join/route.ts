@@ -7,12 +7,25 @@ export async function POST(request: NextRequest) {
   try {
     const { userName, teamId, regNo, event } = await request.json() as { userName: string, teamId: string, regNo: string, event: EventKey };
 
-    if (!userName || !teamId || !regNo || !event) {
+    if (!userName || !teamId || !regNo) {
       return NextResponse.json({ message: 'Missing required fields.' }, { status: 400 });
     }
 
+    const team = db.teams.find(t => t.id === teamId);
+    if (!team) {
+      return NextResponse.json({ message: 'Team ID not found.' }, { status: 404 });
+    }
+    
+    // Cross-check event
+    if(team.event !== event) {
+      return NextResponse.json({ message: `This team is registered for a different event.` }, { status: 400 });
+    }
+
     // Verify event registration
-    if (!db.eventRegistrations[event]?.has(regNo)) {
+    const registeredEvents = Object.keys(db.eventRegistrations).filter(key => 
+        db.eventRegistrations[key as EventKey].has(regNo)
+    );
+    if (!registeredEvents.includes(event)) {
       return NextResponse.json({ message: `Registration number ${regNo} not verified for this event.` }, { status: 403 });
     }
 
@@ -22,10 +35,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: `User with registration number ${regNo} is already in a team.` }, { status: 409 });
     }
 
-    const team = db.teams.find(t => t.id === teamId);
-    if (!team) {
-      return NextResponse.json({ message: 'Team ID not found.' }, { status: 404 });
-    }
 
     if (team.members.length >= db.MAX_TEAM_MEMBERS) {
       return NextResponse.json({ message: 'Team is already full.' }, { status: 409 });

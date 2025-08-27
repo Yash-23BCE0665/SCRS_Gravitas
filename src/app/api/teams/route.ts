@@ -28,9 +28,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify event registration
-    if (!db.eventRegistrations[event]?.has(regNo)) {
-        return NextResponse.json({ message: `Registration number ${regNo} not verified for this event.` }, { status: 403 });
+    const registeredEvents = Object.keys(db.eventRegistrations).filter(key => 
+        db.eventRegistrations[key as EventKey].has(regNo)
+    );
+    if (!registeredEvents.includes(event)) {
+      return NextResponse.json({ message: `Registration number ${regNo} not verified for this event.` }, { status: 403 });
     }
+
 
     // Check if user is already in any team
     const userExists = db.teams.some(team => team.members.some(member => member.id === regNo));
@@ -42,8 +46,10 @@ export async function POST(request: NextRequest) {
     const newTeam: Team = {
         id: `T-${Date.now()}${Math.random().toString(36).substring(2, 7)}`,
         name: teamName,
+        leaderId: newUser.id,
         members: [newUser],
-        score: 0
+        score: 0,
+        event: event,
     };
 
     db.teams.push(newTeam);

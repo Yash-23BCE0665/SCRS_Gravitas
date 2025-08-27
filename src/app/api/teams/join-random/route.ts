@@ -16,7 +16,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify event registration
-    if (!db.eventRegistrations[event]?.has(regNo)) {
+    const registeredEvents = Object.keys(db.eventRegistrations).filter(key => 
+        db.eventRegistrations[key as EventKey].has(regNo)
+    );
+    if (!registeredEvents.includes(event)) {
       return NextResponse.json({ message: `Registration number ${regNo} not verified for this event.` }, { status: 403 });
     }
 
@@ -28,21 +31,23 @@ export async function POST(request: NextRequest) {
 
     const newUser: User = { id: regNo, name: userName };
 
-    // Find a team with space
-    let availableTeam = db.teams.find(t => t.members.length < db.MAX_TEAM_MEMBERS);
+    // Find a team for the specific event with space
+    let availableTeam = db.teams.find(t => t.event === event && t.members.length < db.MAX_TEAM_MEMBERS);
 
     if (availableTeam) {
         availableTeam.members.push(newUser);
         return NextResponse.json({ message: `You've been assigned to team '${availableTeam.name}'!`, team: availableTeam, user: newUser }, { status: 200 });
     }
 
-    // Or create a new team if no space is available
+    // Or create a new team if no space is available for that event
     const teamName = MYSTERY_TEAM_NAMES[db.teams.length % MYSTERY_TEAM_NAMES.length];
     const newTeam: Team = {
         id: `T-${Date.now()}${Math.random().toString(36).substring(2, 7)}`,
         name: teamName,
+        leaderId: newUser.id,
         members: [newUser],
-        score: 0
+        score: 0,
+        event: event,
     };
     db.teams.push(newTeam);
 

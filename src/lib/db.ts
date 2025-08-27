@@ -1,7 +1,8 @@
-import type { Team, User, EventKey } from './types';
+import type { Team, User, EventKey, AdminUser } from './types';
 
 interface Database {
   teams: Team[];
+  admins: AdminUser[];
   eventRegistrations: Record<EventKey, Set<string>>;
   MAX_TEAM_MEMBERS: number;
 }
@@ -11,10 +12,12 @@ interface Database {
 // NOTE: This will reset on every server restart in development.
 export const db: Database = {
   teams: [],
+  admins: [
+    { id: 'admin1', username: 'shadowmaster' },
+  ],
   eventRegistrations: {
     'de-crypt': new Set(['21BCE0001', '22BCE0002', '21BIT0054', '21BCI0123']),
     'code-a-thon': new Set(['23BCH0003', '21BCE0001', '22BCE0101', '21BCE0456']),
-    'web-app-dev': new Set(['22BCE0002', '23BCH0003', '21BCE0011', '22BEC0099']),
   },
   MAX_TEAM_MEMBERS: 4,
 };

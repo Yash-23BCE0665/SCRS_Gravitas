@@ -3,16 +3,22 @@ export interface User {
   name: string;
 }
 
+export interface AdminUser {
+  id: string;
+  username: string;
+}
+
 export interface Team {
   id: string;
   name: string;
+  leaderId: string;
   members: User[];
   score: number;
+  event: EventKey;
 }
 
-export type EventKey = 'de-crypt' | 'code-a-thon' | 'web-app-dev';
+export type EventKey = 'de-crypt' | 'code-a-thon';
 export const EVENTS: { key: EventKey; name: string }[] = [
   { key: 'de-crypt', name: 'De-Crypt' },
   { key: 'code-a-thon', name: 'Code-A-Thon' },
-  { key: 'web-app-dev', name: 'Web App Dev' },
 ];
