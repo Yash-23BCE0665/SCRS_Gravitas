@@ -34,7 +34,6 @@ export default function AdminDashboard() {
   const router = useRouter();
 
   useEffect(() => {
-    // Protect the admin route
     const isAdmin = sessionStorage.getItem("gravitas-admin");
     if (!isAdmin) {
       router.push('/admin/login');
@@ -119,7 +118,9 @@ export default function AdminDashboard() {
         description: error instanceof Error ? error.message : "An unknown error occurred",
       });
     } finally {
-      setUpdatingScores(prev => ({...prev, [editingTeam.id]: false}));
+      if(editingTeam) {
+        setUpdatingScores(prev => ({...prev, [editingTeam.id]: false}));
+      }
     }
   };
   
