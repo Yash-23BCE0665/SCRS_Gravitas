@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import type { Team } from "@/lib/types";
 import { EVENTS } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
@@ -21,7 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Users, Save, Loader2, Edit, Crown } from "lucide-react";
+import { Users, Save, Loader2, Edit, Crown, LogOut } from "lucide-react";
 
 export default function AdminDashboard() {
   const [teams, setTeams] = useState<Team[]>([]);
@@ -30,6 +31,17 @@ export default function AdminDashboard() {
   const [updatingScores, setUpdatingScores] = useState<Record<string, boolean>>({});
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const { toast } = useToast();
+  const router = useRouter();
+
+  useEffect(() => {
+    // Protect the admin route
+    const isAdmin = sessionStorage.getItem("gravitas-admin");
+    if (!isAdmin) {
+      router.push('/admin/login');
+      return;
+    }
+    fetchTeams();
+  }, [router]);
 
   const fetchTeams = async () => {
     setIsLoading(true);
@@ -51,9 +63,6 @@ export default function AdminDashboard() {
     }
   };
 
-  useEffect(() => {
-    fetchTeams();
-  }, []);
 
   const handleUpdateScore = async (teamId: string, newScore: number) => {
     setUpdatingScores(prev => ({...prev, [teamId]: true}));
@@ -113,6 +122,13 @@ export default function AdminDashboard() {
       setUpdatingScores(prev => ({...prev, [editingTeam.id]: false}));
     }
   };
+  
+  const handleLogout = () => {
+    sessionStorage.removeItem("gravitas-admin");
+    router.push('/admin/login');
+    toast({title: "Logged out"});
+  }
+
 
   if (isLoading) {
     return (
@@ -124,6 +140,12 @@ export default function AdminDashboard() {
 
   return (
     <>
+      <div className="text-right mb-4">
+        <Button onClick={handleLogout} variant="outline" size="sm">
+            <LogOut className="mr-2 h-4 w-4" />
+            Logout
+        </Button>
+      </div>
       <div className="border rounded-lg shadow-lg shadow-primary/10 border-primary/20">
         <Table>
           <TableHeader>

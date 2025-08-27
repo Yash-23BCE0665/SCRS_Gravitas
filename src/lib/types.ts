@@ -1,11 +1,13 @@
 export interface User {
   id: string; // registration number
   name: string;
+  password?: string; // Should be hashed in a real app
 }
 
 export interface AdminUser {
   id: string;
   username: string;
+  password?: string; // Should be hashed in a real app
 }
 
 export interface Team {

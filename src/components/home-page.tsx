@@ -48,7 +48,9 @@ import {
   Users,
   Loader2,
   Crown,
+  LogOut,
 } from "lucide-react";
+import LoginForm from "./login-form";
 
 const formSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters."),
@@ -73,12 +75,16 @@ export default function HomePage() {
     const user = sessionStorage.getItem("gravitas-user");
     const teamId = sessionStorage.getItem("gravitas-teamId");
     if (user) {
-      setCurrentUser(JSON.parse(user));
-    }
-    if (teamId) {
-      fetchTeam(teamId);
+      const parsedUser = JSON.parse(user);
+      setCurrentUser(parsedUser);
+       if (teamId) {
+        fetchTeam(teamId);
+      } else {
+        // If user is logged in but has no team, check if they are part of any team.
+        fetchUserTeam(parsedUser.id);
+      }
     } else {
-      setIsTeamViewLoading(false);
+       setIsTeamViewLoading(false);
     }
   }, []);
 
@@ -91,7 +97,6 @@ export default function HomePage() {
       setCurrentTeam(team);
     } catch (error) {
       console.error(error);
-      // If team not found, clear session
       sessionStorage.removeItem("gravitas-teamId");
       setCurrentTeam(null);
     } finally {
@@ -99,15 +104,46 @@ export default function HomePage() {
     }
   };
 
+  const fetchUserTeam = async (userId: string) => {
+    // This is a new function to find out which team a user belongs to upon login
+    // In a real app, this might be part of the user's profile data
+    setIsTeamViewLoading(true);
+    try {
+      const res = await fetch('/api/teams');
+      const allTeams: Team[] = await res.json();
+      const userTeam = allTeams.find(team => team.members.some(member => member.id === userId));
+      if (userTeam) {
+        sessionStorage.setItem('gravitas-teamId', userTeam.id);
+        setCurrentTeam(userTeam);
+      }
+    } catch(e) {
+      console.error("Failed to fetch user's team");
+    } finally {
+      setIsTeamViewLoading(false);
+    }
+  }
+
+
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      name: "",
-      regNo: "",
+      name: currentUser?.name || "",
+      regNo: currentUser?.id || "",
       teamName: "",
       teamId: "",
     },
   });
+  
+  useEffect(() => {
+    if (currentUser) {
+      form.reset({
+        name: currentUser.name,
+        regNo: currentUser.id,
+        teamName: "",
+        teamId: "",
+      });
+    }
+  }, [currentUser, form]);
 
   const handleApiResponse = async (response: Response) => {
     const result = await response.json();
@@ -123,10 +159,11 @@ export default function HomePage() {
       title: "Success",
       description: result.message,
     });
-    sessionStorage.setItem("gravitas-user", JSON.stringify(result.user));
-    sessionStorage.setItem("gravitas-teamId", result.team.id);
-    setCurrentUser(result.user);
-    setCurrentTeam(result.team);
+    // The user data now comes from the form/login, not the API response for team creation
+    if(result.team) {
+      sessionStorage.setItem("gravitas-teamId", result.team.id);
+      setCurrentTeam(result.team);
+    }
     return result;
   };
 
@@ -189,6 +226,13 @@ export default function HomePage() {
     toast({ title: "Team ID copied to clipboard!" });
   };
   
+  const handleLogout = () => {
+    sessionStorage.clear();
+    setCurrentUser(null);
+    setCurrentTeam(null);
+    toast({ title: "You have been logged out." });
+  }
+
   const isLeader = currentUser?.id === currentTeam?.leaderId;
 
   if (isTeamViewLoading) {
@@ -197,6 +241,10 @@ export default function HomePage() {
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
       </div>
     );
+  }
+
+  if (!currentUser) {
+    return <LoginForm onLoginSuccess={setCurrentUser} />;
   }
 
   if (currentUser && currentTeam) {
@@ -246,24 +294,37 @@ export default function HomePage() {
             variant="destructive"
             className="w-full"
             onClick={() => {
-              sessionStorage.clear();
-              setCurrentUser(null);
+              // This should call an API to leave the team. For now, it just clears session.
+              sessionStorage.removeItem("gravitas-teamId");
               setCurrentTeam(null);
               toast({ title: "You have left your team." });
-              // Here you would also call an API to remove the user from the team in a real app
             }}
             disabled={isLeader && currentTeam.members.length > 1}
             title={isLeader && currentTeam.members.length > 1 ? "Leader cannot leave a team with members." : "Leave Team"}
           >
             Leave Team
           </Button>
+
+           <Button
+            variant="ghost"
+            className="w-full"
+            onClick={handleLogout}
+          >
+            <LogOut className="mr-2 h-4 w-4" />
+            Logout
+          </Button>
+
         </CardContent>
       </Card>
     );
   }
 
+  // Logged in but no team
   return (
-    <Tabs defaultValue="create" className="max-w-2xl mx-auto">
+     <Tabs defaultValue="create" className="max-w-2xl mx-auto">
+      <div className="text-right mb-4">
+          <Button variant="ghost" size="sm" onClick={handleLogout}><LogOut className="mr-2"/> Logout</Button>
+      </div>
       <TabsList className="grid w-full grid-cols-3">
         <TabsTrigger value="create">Create</TabsTrigger>
         <TabsTrigger value="join" disabled={!!currentTeam}>Join</TabsTrigger>
@@ -273,38 +334,8 @@ export default function HomePage() {
         <form>
           <Card className="mt-4 shadow-lg shadow-primary/10 border-primary/20">
             <CardHeader>
-              <FormField
-                control={form.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Your Name</FormLabel>
-                    <FormControl>
-                      <Input placeholder="John Doe" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="regNo"
-                render={({ field }) => (
-                  <FormItem className="pt-4">
-                    <FormLabel>VIT Registration No.</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="21BCE0001"
-                        {...field}
-                        onChange={(e) =>
-                          field.onChange(e.target.value.toUpperCase())
-                        }
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                <p className="text-lg">Welcome, <span className="font-bold text-primary">{currentUser.name}</span> ({currentUser.id})</p>
+                <p className="text-sm text-muted-foreground pb-4">You are not in a team yet. Create one or join an existing team for your event.</p>
               <FormField
                 control={form.control}
                 name="event"

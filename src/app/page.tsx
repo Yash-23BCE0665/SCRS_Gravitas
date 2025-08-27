@@ -1,5 +1,6 @@
 import AppTitle from "@/components/app-title";
 import HomePage from "@/components/home-page";
+import LoginForm from "@/components/login-form";
 
 export default function Home() {
   return (
