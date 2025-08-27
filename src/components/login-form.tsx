@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -28,7 +29,7 @@ import { Loader2, LogIn } from "lucide-react";
 const formSchema = z.object({
   regNo: z
     .string()
-    .regex(/^2[1-4](BCE|BIT|BCH|BEC)\d{4}$/i, "Invalid VIT Registration Number."),
+    .regex(/^2[1-4](BCE|BIT|BCH|BEC|BCI)\d{4}$/i, "Invalid VIT Registration Number."),
   password: z.string().min(1, "Password is required."),
 });
 

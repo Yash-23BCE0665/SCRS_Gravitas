@@ -49,8 +49,20 @@ import {
   Loader2,
   Crown,
   LogOut,
+  Trash2,
 } from "lucide-react";
 import LoginForm from "./login-form";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const formSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters."),
@@ -92,7 +104,11 @@ export default function HomePage() {
     setIsTeamViewLoading(true);
     try {
       const response = await fetch(`/api/teams?id=${teamId}`);
-      if (!response.ok) throw new Error("Team not found");
+      if (!response.ok) {
+        setCurrentTeam(null);
+        sessionStorage.removeItem("gravitas-teamId");
+        throw new Error("Team not found");
+      }
       const team = await response.json();
       setCurrentTeam(team);
     } catch (error) {
@@ -233,6 +249,33 @@ export default function HomePage() {
     toast({ title: "You have been logged out." });
   }
 
+  const handleLeaveTeam = async () => {
+    if (!currentUser || !currentTeam) return;
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/teams/leave', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.id, teamId: currentTeam.id }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.message);
+      }
+      toast({ title: "Success", description: result.message });
+      sessionStorage.removeItem("gravitas-teamId");
+      setCurrentTeam(null);
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error leaving team",
+        description: error instanceof Error ? error.message : "An unknown error occurred",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
   const isLeader = currentUser?.id === currentTeam?.leaderId;
 
   if (isTeamViewLoading) {
@@ -244,7 +287,10 @@ export default function HomePage() {
   }
 
   if (!currentUser) {
-    return <LoginForm onLoginSuccess={setCurrentUser} />;
+    return <LoginForm onLoginSuccess={(user) => {
+        setCurrentUser(user);
+        fetchUserTeam(user.id);
+    }} />;
   }
 
   if (currentUser && currentTeam) {
@@ -290,20 +336,34 @@ export default function HomePage() {
             </DialogContent>
           </Dialog>
 
-          <Button
-            variant="destructive"
-            className="w-full"
-            onClick={() => {
-              // This should call an API to leave the team. For now, it just clears session.
-              sessionStorage.removeItem("gravitas-teamId");
-              setCurrentTeam(null);
-              toast({ title: "You have left your team." });
-            }}
-            disabled={isLeader && currentTeam.members.length > 1}
-            title={isLeader && currentTeam.members.length > 1 ? "Leader cannot leave a team with members." : "Leave Team"}
-          >
-            Leave Team
-          </Button>
+           <AlertDialog>
+            <AlertDialogTrigger asChild>
+               <Button
+                  variant="destructive"
+                  className="w-full"
+                  disabled={isLoading || (isLeader && currentTeam.members.length > 1)}
+                  title={isLeader && currentTeam.members.length > 1 ? "Leader cannot leave a team with members." : "Leave Team"}
+                >
+                  <Trash2 className="mr-2"/>
+                  {isLeader ? "Disband Team" : "Leave Team"}
+                </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                <AlertDialogDescription>
+                    {isLeader ? "This action will permanently disband the team. This cannot be undone." : "This will remove you from the team. You can join or create another team later."}
+                </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={handleLeaveTeam} disabled={isLoading}>
+                    {isLoading ? <Loader2 className="animate-spin"/> : "Continue"}
+                </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+           </AlertDialog>
+
 
            <Button
             variant="ghost"
