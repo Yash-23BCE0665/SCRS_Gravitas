@@ -1,20 +1,27 @@
 export interface User {
-  id: string; // registration number
+  id: string; // uuid
   name: string;
-  password?: string; // Should be hashed in a real app
+  email: string;
+  password?: string; // nullable, for fallback login
 }
 
 export interface AdminUser {
   id: string;
   username: string;
-  password?: string; // Should be hashed in a real app
+  password?: string;
+}
+
+export interface TeamMember {
+  id: string;
+  name: string;
+  email: string;
 }
 
 export interface Team {
   id: string;
   name: string;
-  leaderId: string;
-  members: User[];
+  leader_id: string;
+  members: TeamMember[];
   score: number;
   event: EventKey;
 }

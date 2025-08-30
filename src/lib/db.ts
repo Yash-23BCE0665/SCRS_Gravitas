@@ -1,34 +1,82 @@
 import type { Team, User, EventKey, AdminUser } from './types';
+import { supabase } from './supabase';
 
-interface Database {
-  teams: Team[];
-  admins: AdminUser[];
-  // Storing users separately to manage logins and passwords
-  users: User[];
-  eventRegistrations: Record<EventKey, Set<string>>;
-  MAX_TEAM_MEMBERS: number;
+export const MAX_TEAM_MEMBERS = 4;
+
+// Admin functions
+export async function getAdmin(username: string) {
+  const { data, error } = await supabase
+    .from('admin')
+    .select('*')
+    .eq('username', username)
+    .single();
+  
+  if (error) throw error;
+  return data as AdminUser;
 }
 
-// In-memory "database"
-// NOTE: This will reset on every server restart in development.
-export const db: Database = {
-  teams: [],
-  admins: [
-    { id: 'admin1', username: 'shadowmaster', password: 'password123' },
-  ],
-  // Pre-seeded users for demo purposes. In a real app, this would be a user registration system.
-  users: [
-      { id: '21BCE0001', name: 'John Doe', password: 'password' },
-      { id: '22BCE0002', name: 'Jane Smith', password: 'password' },
-      { id: '21BIT0054', name: 'Peter Jones', password: 'password' },
-      { id: '21BCI0123', name: 'Mary Jane', password: 'password' },
-      { id: '23BCH0003', name: 'Clark Kent', password: 'password' },
-      { id: '22BCE0101', name: 'Bruce Wayne', password: 'password' },
-      { id: '21BCE0456', name: 'Diana Prince', password: 'password' },
-  ],
-  eventRegistrations: {
-    'de-crypt': new Set(['21BCE0001', '22BCE0002', '21BIT0054', '21BCI0123']),
-    'code-a-thon': new Set(['23BCH0003', '21BCE0001', '22BCE0101', '21BCE0456']),
-  },
-  MAX_TEAM_MEMBERS: 4,
-};
+// User functions
+export async function getUser(id: string) {
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', id)
+    .single();
+  
+  if (error) throw error;
+  return data as User;
+}
+
+// Team functions
+export async function getTeam(id: string) {
+  const { data, error } = await supabase
+    .from('teams')
+    .select('*')
+    .eq('id', id)
+    .single();
+  
+  if (error) throw error;
+  return data as Team;
+}
+
+export async function createTeam(team: Omit<Team, 'id'>) {
+  const { data, error } = await supabase
+    .from('teams')
+    .insert(team)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data as Team;
+}
+
+export async function updateTeam(id: string, updates: Partial<Team>) {
+  const { data, error } = await supabase
+    .from('teams')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data as Team;
+}
+
+// Event registration functions
+export async function getEventRegistrations(eventKey: EventKey) {
+  const { data, error } = await supabase
+    .from('event_registrations')
+    .select('user_id')
+    .eq('event_key', eventKey);
+  
+  if (error) throw error;
+  return new Set(data.map(r => r.user_id));
+}
+
+export async function registerForEvent(eventKey: EventKey, userId: string) {
+  const { error } = await supabase
+    .from('event_registrations')
+    .insert({ event_key: eventKey, user_id: userId });
+  
+  if (error) throw error;
+}
