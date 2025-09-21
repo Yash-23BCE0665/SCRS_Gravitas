@@ -24,8 +24,8 @@ import {
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import type { Team, User, EventKey } from "@/lib/types";
-import { EVENTS } from "@/lib/types";
+import type { Team, User } from "@/lib/types";
+import { EVENTS, DEFAULT_EVENT } from "@/lib/types";
 import {
   Select,
   SelectContent,
@@ -68,7 +68,6 @@ import {
 const formSchema = z.object({
   teamName: z.string().optional(),
   teamId: z.string().optional(),
-  event: z.custom<EventKey>((val) => val, 'Please select an event.'),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -185,12 +184,6 @@ export default function HomePage() {
       let body;
       let url;
 
-      if (!values.event) {
-        toast({ variant: "destructive", title: "Error", description: "Please select an event." });
-        setIsLoading(false);
-        return;
-      }
-      
       if (!currentUser) {
         toast({ variant: "destructive", title: "Error", description: "User not logged in." });
         setIsLoading(false);
@@ -200,7 +193,7 @@ export default function HomePage() {
         userId: currentUser.id,
         userEmail: currentUser.email,
         userName: currentUser.name,
-        event: values.event,
+        event: DEFAULT_EVENT,
       };
 
       switch (endpoint) {
@@ -406,38 +399,7 @@ export default function HomePage() {
           <Card className="mt-4 shadow-lg shadow-primary/10 border-primary/20">
             <CardHeader>
                 <p className="text-lg">Welcome, <span className="font-bold text-primary">{currentUser.name}</span></p>
-                <p className="text-sm text-muted-foreground pb-4">You are not in a team yet. Create one or join an existing team for your event.</p>
-              <FormField
-                control={form.control}
-                name="event"
-                render={({ field }) => (
-                  <FormItem className="pt-4">
-                    <FormLabel>Event</FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      defaultValue={field.value}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select an event" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {EVENTS.map((event) => (
-                          <SelectItem key={event.key} value={event.key}>
-                            {event.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormDescription>
-                      Ensure you are registered for this event on the VIT
-                      portal.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                <p className="text-sm text-muted-foreground pb-4">You are not in a team yet. Create one or join an existing team for ESCAPE.EXE II.</p>
             </CardHeader>
 
             <TabsContent value="create">

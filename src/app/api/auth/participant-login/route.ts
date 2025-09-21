@@ -4,7 +4,7 @@ import type { User } from '@/lib/types';
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, password, google, name } = await request.json();
+    const { identifier, email, password, google, name } = await request.json();
 
     if (google) {
       // Google OAuth flow
@@ -30,22 +30,59 @@ export async function POST(request: NextRequest) {
       }
       return NextResponse.json({ message: `Welcome, ${user.name}!`, user }, { status: 200 });
     } else {
-      // Fallback password login
-      if (!email || !password) {
-        return NextResponse.json({ message: 'Missing email or password.' }, { status: 400 });
+      // Identifier-based password login (username/email/reg number)
+      if (!identifier || !password) {
+        return NextResponse.json({ message: 'Missing identifier or password.' }, { status: 400 });
       }
-      const { data: user, error } = await supabase
-        .from('users')
-        .select('id, name, email, password')
-        .eq('email', email.toLowerCase())
-        .single();
-      if (error || !user) {
+
+      let foundUser: User | null = null;
+
+      // Identifier is an email
+      if (typeof identifier === 'string' && identifier.includes('@')) {
+        const { data, error } = await supabase
+          .from('users')
+          .select('id, name, email, username, password')
+          .eq('email', identifier.toLowerCase())
+          .single();
+        if (!error && data) foundUser = data as unknown as User;
+      }
+
+      // Try by username if not found and identifier has no '@'
+      if (!foundUser && typeof identifier === 'string' && !identifier.includes('@')) {
+        const { data, error } = await supabase
+          .from('users')
+          .select('id, name, email, username, password')
+          .eq('username', identifier)
+          .maybeSingle();
+        if (!error && data) foundUser = data as unknown as User;
+      }
+
+      // Try by registration number (via event_registration -> email)
+      if (!foundUser && typeof identifier === 'string' && !identifier.includes('@')) {
+        const { data: reg } = await supabase
+          .from('event_registration')
+          .select('user_email')
+          .eq('reg_no', identifier)
+          .maybeSingle();
+        if (reg?.user_email) {
+          const { data } = await supabase
+            .from('users')
+            .select('id, name, email, username, password')
+            .eq('email', reg.user_email.toLowerCase())
+            .maybeSingle();
+          if (data) foundUser = data as unknown as User;
+        }
+      }
+
+      if (!foundUser) {
         return NextResponse.json({ message: 'User not found.' }, { status: 404 });
       }
-      if (!user.password || user.password !== password) {
+
+      if (!foundUser.password || foundUser.password !== password) {
         return NextResponse.json({ message: 'Invalid password.' }, { status: 401 });
       }
-      return NextResponse.json({ message: `Welcome back, ${user.name}!`, user }, { status: 200 });
+
+      return NextResponse.json({ message: `Welcome back, ${foundUser.name}!`, user: foundUser }, { status: 200 });
     }
   } catch (error) {
     return NextResponse.json({ message: 'An internal server error occurred.' }, { status: 500 });

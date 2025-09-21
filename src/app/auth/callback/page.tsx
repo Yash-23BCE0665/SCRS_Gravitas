@@ -19,10 +19,15 @@ export default function AuthCallbackPage() {
           body: JSON.stringify({ email, google: true, name: session.user.user_metadata?.name || session.user.email }),
         });
         const result = await res.json();
-        if (res.ok && result.user && result.user.password) {
-          router.replace("/");
-        } else if (res.ok && result.user && !result.user.password) {
-          router.replace("/onboarding");
+        if (res.ok && result.user) {
+          // If user already has both username and password, treat as fully onboarded
+          if (result.user.username && result.user.password) {
+            sessionStorage.setItem("gravitas-user", JSON.stringify(result.user));
+            router.replace("/");
+          } else {
+            // Complete onboarding to collect username and password
+            router.replace("/onboarding");
+          }
         } else {
           // Not registered for event or error
           setError(result.message || "You are not registered for any event.");

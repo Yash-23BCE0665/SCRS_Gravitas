@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import type { Team, User, EventKey } from '@/lib/types';
+import { DEFAULT_EVENT } from '@/lib/types';
 
 // GET all teams or a specific team by ID
 export async function GET(request: NextRequest) {
@@ -37,7 +38,9 @@ export async function POST(request: NextRequest) {
   try {
     const { userId, userEmail, userName, teamName, event } = await request.json();
 
-    if (!userId || !userEmail || !userName || !teamName || !event) {
+    const effectiveEvent: EventKey = event || DEFAULT_EVENT;
+
+    if (!userId || !userEmail || !userName || !teamName) {
       return NextResponse.json({ message: 'Missing required fields.' }, { status: 400 });
     }
 
@@ -45,7 +48,7 @@ export async function POST(request: NextRequest) {
     const { data: eventRegistration } = await supabase
       .from('event_registration')
       .select('*')
-      .eq('event_key', event)
+      .eq('event_key', effectiveEvent)
       .eq('user_email', userEmail);
 
     if (!eventRegistration?.length) {
@@ -85,7 +88,7 @@ export async function POST(request: NextRequest) {
       leader_id: userId,
       members: [memberData],
       score: 0,
-      event: event,
+      event: effectiveEvent,
     };
 
     const { data: team, error } = await supabase

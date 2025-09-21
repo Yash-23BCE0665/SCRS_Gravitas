@@ -32,6 +32,8 @@ export default function AdminDashboard() {
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
   const [updatingScores, setUpdatingScores] = useState<Record<string, boolean>>({});
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [poolCount, setPoolCount] = useState<number>(0);
+  const [isGenerating, setIsGenerating] = useState(false);
   const { toast } = useToast();
   const router = useRouter();
 
@@ -68,6 +70,7 @@ export default function AdminDashboard() {
       return;
     }
     fetchTeams();
+    fetchPool();
   }, [router]);
 
   const fetchTeams = async () => {
@@ -89,6 +92,36 @@ export default function AdminDashboard() {
       setIsLoading(false);
     }
   };
+
+  const fetchPool = async () => {
+    try {
+      const res = await fetch('/api/admin/random-pool');
+      const data = await res.json();
+      setPoolCount(data.count || 0);
+    } catch {}
+  }
+
+  const handleGenerateRandomTeams = async () => {
+    setIsGenerating(true);
+    try {
+      const res = await fetch('/api/admin/generate-random-teams', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamSize: 4 }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        throw new Error(result.message || 'Failed to generate teams');
+      }
+      toast({ title: 'Success', description: `Created ${result.createdTeamIds.length} teams.` });
+      fetchTeams();
+      fetchPool();
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Error', description: error instanceof Error ? error.message : 'Unknown error' });
+    } finally {
+      setIsGenerating(false);
+    }
+  }
 
 
   const handleUpdateScore = async (teamId: string, newScore: number) => {
@@ -169,11 +202,20 @@ export default function AdminDashboard() {
 
   return (
     <>
-      <div className="text-right mb-4">
-        <Button onClick={handleLogout} variant="outline" size="sm">
-            <LogOut className="mr-2 h-4 w-4" />
-            Logout
-        </Button>
+      <div className="flex items-center justify-between mb-4">
+        <div className="text-sm text-muted-foreground">
+          Random pool: <span className="font-mono font-semibold">{poolCount}</span> participant(s)
+        </div>
+        <div className="flex gap-2">
+          <Button onClick={handleGenerateRandomTeams} disabled={isGenerating || poolCount < 2}>
+            {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
+            Generate Random Teams
+          </Button>
+          <Button onClick={handleLogout} variant="outline" size="sm">
+              <LogOut className="mr-2 h-4 w-4" />
+              Logout
+          </Button>
+        </div>
       </div>
       <div className="border rounded-lg shadow-lg shadow-primary/10 border-primary/20">
         <Table>

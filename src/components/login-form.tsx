@@ -29,7 +29,7 @@ import { supabase } from '@/lib/supabase';
 
 
 const formSchema = z.object({
-  email: z.string().email("Enter your VIT email address."),
+  identifier: z.string().min(1, "Enter email/username/reg no."),
   password: z.string().optional(),
 });
 
@@ -47,7 +47,7 @@ export default function LoginForm({ onLoginSuccess }: LoginFormProps) {
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      email: "",
+      identifier: "",
       password: "",
     },
   });
@@ -87,7 +87,7 @@ export default function LoginForm({ onLoginSuccess }: LoginFormProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: values.email.toLowerCase(),
+          identifier: values.identifier.trim(),
           password: values.password,
         }),
       });
@@ -136,14 +136,13 @@ export default function LoginForm({ onLoginSuccess }: LoginFormProps) {
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <FormField
               control={form.control}
-              name="email"
+            name="identifier"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Email</FormLabel>
+                <FormLabel>Email / Username / Reg No</FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="yourid@vit.ac.in"
-                      type="email"
+                    placeholder="yourid@vit.ac.in or username or 21BCE0000"
                       {...field}
                     />
                   </FormControl>

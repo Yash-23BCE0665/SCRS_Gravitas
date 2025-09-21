@@ -2,6 +2,7 @@ export interface User {
   id: string; // uuid
   name: string;
   email: string;
+  username?: string;
   password?: string; // nullable, for fallback login
 }
 
@@ -26,8 +27,8 @@ export interface Team {
   event: EventKey;
 }
 
-export type EventKey = 'de-crypt' | 'code-a-thon';
+export type EventKey = 'escape-exe-ii';
+export const DEFAULT_EVENT: EventKey = 'escape-exe-ii';
 export const EVENTS: { key: EventKey; name: string }[] = [
-  { key: 'de-crypt', name: 'De-Crypt' },
-  { key: 'code-a-thon', name: 'Code-A-Thon' },
+  { key: 'escape-exe-ii', name: 'ESCAPE.EXE II' },
 ];

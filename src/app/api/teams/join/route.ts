@@ -2,13 +2,16 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import type { User, EventKey } from '@/lib/types';
 import { MAX_TEAM_MEMBERS } from '@/lib/db';
+import { DEFAULT_EVENT } from '@/lib/types';
 
 // POST to join an existing team
 export async function POST(request: NextRequest) {
   try {
     const { userId, userEmail, userName, teamId, event } = await request.json();
 
-    if (!userId || !userEmail || !userName || !teamId || !event) {
+    const effectiveEvent = event || DEFAULT_EVENT;
+
+    if (!userId || !userEmail || !userName || !teamId) {
       return NextResponse.json({ message: 'Missing required fields.' }, { status: 400 });
     }
 
@@ -24,7 +27,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Cross-check event
-    if(team.event !== event) {
+    if(team.event !== effectiveEvent) {
       return NextResponse.json({ message: `This team is registered for a different event.` }, { status: 400 });
     }
 
@@ -32,7 +35,7 @@ export async function POST(request: NextRequest) {
     const { data: eventRegistration } = await supabase
       .from('event_registration')
       .select('*')
-      .eq('event_key', event)
+      .eq('event_key', effectiveEvent)
       .eq('user_email', userEmail);
 
     if (!eventRegistration?.length) {
