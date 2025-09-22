@@ -24,8 +24,8 @@ import {
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import type { Team, User, EventKey } from "@/lib/types";
-import { EVENTS } from "@/lib/types";
+import type { Team, User } from "@/lib/types";
+import { EVENTS, DEFAULT_EVENT } from "@/lib/types";
 import {
   Select,
   SelectContent,
@@ -52,6 +52,7 @@ import {
   Trash2,
 } from "lucide-react";
 import LoginForm from "./login-form";
+import TeamJoinRequests from "./team-join-requests";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -65,13 +66,8 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const formSchema = z.object({
-  name: z.string().min(2, "Name must be at least 2 characters."),
-  regNo: z
-    .string()
-    .regex(/^2[1-4](BCE|BIT|BCH|BEC)\d{4}$/i, "Invalid VIT Registration Number."),
   teamName: z.string().optional(),
   teamId: z.string().optional(),
-  event: z.custom<EventKey>((val) => val, 'Please select an event.'),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -143,18 +139,14 @@ export default function HomePage() {
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      name: currentUser?.name || "",
-      regNo: currentUser?.id || "",
       teamName: "",
       teamId: "",
     },
   });
-  
+
   useEffect(() => {
     if (currentUser) {
       form.reset({
-        name: currentUser.name,
-        regNo: currentUser.id,
         teamName: "",
         teamId: "",
       });
@@ -192,16 +184,16 @@ export default function HomePage() {
       let body;
       let url;
 
-      if (!values.event) {
-        toast({ variant: "destructive", title: "Error", description: "Please select an event." });
+      if (!currentUser) {
+        toast({ variant: "destructive", title: "Error", description: "User not logged in." });
         setIsLoading(false);
         return;
       }
-      
       const commonPayload = {
-        userName: values.name,
-        regNo: values.regNo.toUpperCase(),
-        event: values.event,
+        userId: currentUser.id,
+        userEmail: currentUser.email,
+        userName: currentUser.name,
+        event: DEFAULT_EVENT,
       };
 
       switch (endpoint) {
@@ -276,7 +268,7 @@ export default function HomePage() {
     }
   }
 
-  const isLeader = currentUser?.id === currentTeam?.leaderId;
+  const isLeader = currentUser?.id === currentTeam?.leader_id;
 
   if (isTeamViewLoading) {
     return (
@@ -328,44 +320,56 @@ export default function HomePage() {
               <ul className="space-y-2 font-mono">
                 {currentTeam.members.map((member) => (
                   <li key={member.id} className="p-2 bg-muted/50 rounded-md flex items-center">
-                    {member.name} ({member.id})
-                    {member.id === currentTeam.leaderId && <Crown className="ml-2 h-4 w-4 text-primary" title="Team Leader"/>}
+                    <span className="flex items-center">
+                      {member.name}
+                      {member.id === currentTeam.leader_id && (
+                        <Crown className="ml-2 h-4 w-4 text-yellow-400 dark:text-yellow-300" />
+                      )}
+                    </span>
                   </li>
                 ))}
               </ul>
             </DialogContent>
           </Dialog>
 
-           <AlertDialog>
+          {/* Show join requests if user is the leader */}
+          {isLeader && (
+            <TeamJoinRequests leaderId={currentUser.id} team={currentTeam} />
+          )}
+
+          <AlertDialog>
             <AlertDialogTrigger asChild>
-               <Button
-                  variant="destructive"
-                  className="w-full"
-                  disabled={isLoading || (isLeader && currentTeam.members.length > 1)}
-                  title={isLeader && currentTeam.members.length > 1 ? "Leader cannot leave a team with members." : "Leave Team"}
-                >
-                  <Trash2 className="mr-2"/>
-                  {isLeader ? "Disband Team" : "Leave Team"}
-                </Button>
+              <Button
+                variant="destructive"
+                className="w-full"
+                disabled={isLoading}
+                title={isLeader ? (currentTeam.members.length === 1 ? "Disband Team" : "Leave Team (leadership will transfer)") : "Leave Team"}
+              >
+                <Trash2 className="mr-2"/>
+                {isLeader ? (currentTeam.members.length === 1 ? "Disband Team" : "Leave Team") : "Leave Team"}
+              </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
-                <AlertDialogHeader>
+              <AlertDialogHeader>
                 <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                 <AlertDialogDescription>
-                    {isLeader ? "This action will permanently disband the team. This cannot be undone." : "This will remove you from the team. You can join or create another team later."}
+                  {isLeader
+                    ? (currentTeam.members.length === 1
+                        ? "This action will permanently disband the team. This cannot be undone."
+                        : "You will leave the team and leadership will transfer to the next member.")
+                    : "This will remove you from the team. You can join or create another team later."}
                 </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
                 <AlertDialogAction onClick={handleLeaveTeam} disabled={isLoading}>
-                    {isLoading ? <Loader2 className="animate-spin"/> : "Continue"}
+                  {isLoading ? <Loader2 className="animate-spin"/> : "Continue"}
                 </AlertDialogAction>
-                </AlertDialogFooter>
+              </AlertDialogFooter>
             </AlertDialogContent>
-           </AlertDialog>
+          </AlertDialog>
 
-
-           <Button
+          <Button
             variant="ghost"
             className="w-full"
             onClick={handleLogout}
@@ -394,39 +398,8 @@ export default function HomePage() {
         <form>
           <Card className="mt-4 shadow-lg shadow-primary/10 border-primary/20">
             <CardHeader>
-                <p className="text-lg">Welcome, <span className="font-bold text-primary">{currentUser.name}</span> ({currentUser.id})</p>
-                <p className="text-sm text-muted-foreground pb-4">You are not in a team yet. Create one or join an existing team for your event.</p>
-              <FormField
-                control={form.control}
-                name="event"
-                render={({ field }) => (
-                  <FormItem className="pt-4">
-                    <FormLabel>Event</FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      defaultValue={field.value}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select an event" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {EVENTS.map((event) => (
-                          <SelectItem key={event.key} value={event.key}>
-                            {event.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormDescription>
-                      Ensure you are registered for this event on the VIT
-                      portal.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                <p className="text-lg">Welcome, <span className="font-bold text-primary">{currentUser.name}</span></p>
+                <p className="text-sm text-muted-foreground pb-4">You are not in a team yet. Create one or join an existing team for ESCAPE.EXE II.</p>
             </CardHeader>
 
             <TabsContent value="create">
@@ -492,8 +465,8 @@ export default function HomePage() {
             <TabsContent value="random">
               <CardContent>
                 <p className="text-sm text-muted-foreground">
-                  No team? No problem. We'll find a spot for you, or forge a
-                  new team from the shadows.
+                  No team? No problem. We'll send a join request to a random team leader for your event.<br/>
+                  If accepted, you'll be added to a team. Otherwise, a new team will be created for you.
                 </p>
               </CardContent>
               <Button
@@ -506,7 +479,7 @@ export default function HomePage() {
                 ) : (
                   <Shuffle className="mr-2 h-4 w-4" />
                 )}
-                Join Random Team
+                Request Random Team
               </Button>
             </TabsContent>
           </Card>

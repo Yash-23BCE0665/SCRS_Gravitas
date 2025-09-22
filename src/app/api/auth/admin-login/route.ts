@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { db } from '@/lib/db';
+import { supabase } from '@/lib/supabase';
 import type { AdminUser } from '@/lib/types';
 
 export async function POST(request: NextRequest) {
@@ -10,10 +10,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Missing username or password.' }, { status: 400 });
     }
 
-    const admin = db.admins.find(a => a.username === username);
 
-    if (!admin || admin.password !== password) {
-      return NextResponse.json({ message: 'Invalid credentials.' }, { status: 401 });
+    // Query the admin directly from Supabase
+    const { data: admin, error } = await supabase
+      .from('admin')
+      .select('id, username, password')
+      .eq('username', username)
+      .single();
+
+    // Debug logging
+    console.log('ADMIN LOGIN DEBUG:', { username, password, admin, error });
+
+    if (error || !admin || admin.password !== password) {
+      return NextResponse.json({
+        message: 'Invalid credentials.',
+        debug: { username, password, admin, error }
+      }, { status: 401 });
     }
 
     // In a real app, you would issue a secure token (e.g., JWT) here.

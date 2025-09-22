@@ -1,32 +1,89 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { db } from '@/lib/db';
+import { supabase } from '@/lib/supabase';
 import type { User } from '@/lib/types';
 
 export async function POST(request: NextRequest) {
   try {
-    const { regNo, password } = await request.json();
+    const { identifier, email, password, google, name } = await request.json();
 
-    if (!regNo || !password) {
-      return NextResponse.json({ message: 'Missing registration number or password.' }, { status: 400 });
-    }
+    if (google) {
+      // Google OAuth flow
+      if (!email) {
+        return NextResponse.json({ message: 'Missing email from Google login.' }, { status: 400 });
+      }
+      // Check if email is registered for any event
+      const { data: regData } = await supabase
+        .from('event_registration')
+        .select('*')
+        .eq('user_email', email.toLowerCase());
+      if (!regData || regData.length === 0) {
+        return NextResponse.json({ message: 'You are not registered for any event.' }, { status: 403 });
+      }
+      // Upsert user in users table
+      const { data: user, error: userError } = await supabase
+        .from('users')
+        .upsert({ email: email.toLowerCase(), name }, { onConflict: 'email' })
+        .select()
+        .single();
+      if (userError) {
+        return NextResponse.json({ message: 'Error creating user.' }, { status: 500 });
+      }
+      return NextResponse.json({ message: `Welcome, ${user.name}!`, user }, { status: 200 });
+    } else {
+      // Identifier-based password login (username/email/reg number)
+      if (!identifier || !password) {
+        return NextResponse.json({ message: 'Missing identifier or password.' }, { status: 400 });
+      }
 
-    const user = db.users.find(u => u.id.toUpperCase() === regNo.toUpperCase());
+      let foundUser: User | null = null;
 
-    if (!user) {
-        return NextResponse.json({ message: 'Registration number not found in our records.' }, { status: 404 });
-    }
+      // Identifier is an email
+      if (typeof identifier === 'string' && identifier.includes('@')) {
+        const { data, error } = await supabase
+          .from('users')
+          .select('id, name, email, username, password')
+          .eq('email', identifier.toLowerCase())
+          .single();
+        if (!error && data) foundUser = data as unknown as User;
+      }
 
-    // IMPORTANT: In a real-world application, NEVER store or compare plaintext passwords.
-    // Always hash passwords before storing them and use a secure comparison function.
-    if (user.password !== password) {
+      // Try by username if not found and identifier has no '@'
+      if (!foundUser && typeof identifier === 'string' && !identifier.includes('@')) {
+        const { data, error } = await supabase
+          .from('users')
+          .select('id, name, email, username, password')
+          .eq('username', identifier)
+          .maybeSingle();
+        if (!error && data) foundUser = data as unknown as User;
+      }
+
+      // Try by registration number (via event_registration -> email)
+      if (!foundUser && typeof identifier === 'string' && !identifier.includes('@')) {
+        const { data: reg } = await supabase
+          .from('event_registration')
+          .select('user_email')
+          .eq('reg_no', identifier)
+          .maybeSingle();
+        if (reg?.user_email) {
+          const { data } = await supabase
+            .from('users')
+            .select('id, name, email, username, password')
+            .eq('email', reg.user_email.toLowerCase())
+            .maybeSingle();
+          if (data) foundUser = data as unknown as User;
+        }
+      }
+
+      if (!foundUser) {
+        return NextResponse.json({ message: 'User not found.' }, { status: 404 });
+      }
+
+      if (!foundUser.password || foundUser.password !== password) {
         return NextResponse.json({ message: 'Invalid password.' }, { status: 401 });
+      }
+
+      return NextResponse.json({ message: `Welcome back, ${foundUser.name}!`, user: foundUser }, { status: 200 });
     }
-
-    // Don't send the password back to the client.
-    const userSessionData: User = { id: user.id, name: user.name };
-
-    return NextResponse.json({ message: `Welcome back, ${user.name}!`, user: userSessionData }, { status: 200 });
-
   } catch (error) {
     return NextResponse.json({ message: 'An internal server error occurred.' }, { status: 500 });
   }

@@ -22,7 +22,9 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Users, Save, Loader2, Edit, Crown, LogOut } from "lucide-react";
+import { Users, Save, Loader2, Edit, Crown, LogOut, UserX } from "lucide-react";
+
+
 
 export default function AdminDashboard() {
   const [teams, setTeams] = useState<Team[]>([]);
@@ -30,8 +32,36 @@ export default function AdminDashboard() {
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
   const [updatingScores, setUpdatingScores] = useState<Record<string, boolean>>({});
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [poolCount, setPoolCount] = useState<number>(0);
+  const [isGenerating, setIsGenerating] = useState(false);
   const { toast } = useToast();
   const router = useRouter();
+
+  // Remove member handler (must be inside component for hooks)
+  const handleRemoveMember = async (teamId: string, memberId: string) => {
+    setUpdatingScores(prev => ({...prev, [teamId + memberId]: true}));
+    try {
+      const res = await fetch(`/api/teams/${teamId}/remove-member`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        throw new Error(result.message || 'Failed to remove member');
+      }
+      toast({ title: "Success", description: result.message });
+      fetchTeams();
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error removing member",
+        description: error instanceof Error ? error.message : "An unknown error occurred",
+      });
+    } finally {
+      setUpdatingScores(prev => ({...prev, [teamId + memberId]: false}));
+    }
+  };
 
   useEffect(() => {
     const isAdmin = sessionStorage.getItem("gravitas-admin");
@@ -40,6 +70,7 @@ export default function AdminDashboard() {
       return;
     }
     fetchTeams();
+    fetchPool();
   }, [router]);
 
   const fetchTeams = async () => {
@@ -61,6 +92,36 @@ export default function AdminDashboard() {
       setIsLoading(false);
     }
   };
+
+  const fetchPool = async () => {
+    try {
+      const res = await fetch('/api/admin/random-pool');
+      const data = await res.json();
+      setPoolCount(data.count || 0);
+    } catch {}
+  }
+
+  const handleGenerateRandomTeams = async () => {
+    setIsGenerating(true);
+    try {
+      const res = await fetch('/api/admin/generate-random-teams', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamSize: 4 }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        throw new Error(result.message || 'Failed to generate teams');
+      }
+      toast({ title: 'Success', description: `Created ${result.createdTeamIds.length} teams.` });
+      fetchTeams();
+      fetchPool();
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Error', description: error instanceof Error ? error.message : 'Unknown error' });
+    } finally {
+      setIsGenerating(false);
+    }
+  }
 
 
   const handleUpdateScore = async (teamId: string, newScore: number) => {
@@ -141,11 +202,20 @@ export default function AdminDashboard() {
 
   return (
     <>
-      <div className="text-right mb-4">
-        <Button onClick={handleLogout} variant="outline" size="sm">
-            <LogOut className="mr-2 h-4 w-4" />
-            Logout
-        </Button>
+      <div className="flex items-center justify-between mb-4">
+        <div className="text-sm text-muted-foreground">
+          Random pool: <span className="font-mono font-semibold">{poolCount}</span> participant(s)
+        </div>
+        <div className="flex gap-2">
+          <Button onClick={handleGenerateRandomTeams} disabled={isGenerating || poolCount < 2}>
+            {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
+            Generate Random Teams
+          </Button>
+          <Button onClick={handleLogout} variant="outline" size="sm">
+              <LogOut className="mr-2 h-4 w-4" />
+              Logout
+          </Button>
+        </div>
       </div>
       <div className="border rounded-lg shadow-lg shadow-primary/10 border-primary/20">
         <Table>
@@ -181,11 +251,26 @@ export default function AdminDashboard() {
                         <DialogHeader>
                           <DialogTitle className="font-headline tracking-wide">{team.name} Members</DialogTitle>
                         </DialogHeader>
-                         <ul className="space-y-2 font-mono">
+                        <ul className="space-y-2 font-mono">
                           {team.members.map((member) => (
-                            <li key={member.id} className="p-2 bg-muted/50 rounded-md flex items-center">
-                              {member.name} ({member.id})
-                              {member.id === team.leaderId && <Crown className="ml-2 h-4 w-4 text-primary" title="Team Leader"/>}
+                            <li key={member.id} className="p-2 bg-muted/50 rounded-md flex items-center justify-between">
+                              <span>
+                                {member.name}
+                                {member.id === team.leader_id && <Crown className="ml-2 h-4 w-4 text-primary" />}
+                              </span>
+                              <span>
+                                {team.members.length > 1 && (
+                                  <Button
+                                    size="icon"
+                                    variant="destructive"
+                                    disabled={updatingScores[team.id + member.id] || member.id === team.leader_id}
+                                    onClick={() => handleRemoveMember(team.id, member.id)}
+                                    title={member.id === team.leader_id ? "Cannot remove leader" : "Remove member"}
+                                  >
+                                    <UserX className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </span>
                             </li>
                           ))}
                         </ul>
