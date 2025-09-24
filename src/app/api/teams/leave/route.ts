@@ -39,13 +39,21 @@ export async function POST(request: NextRequest) {
         if (deleteError) {
           return NextResponse.json({ message: 'Error disbanding team.' }, { status: 500 });
         }
-        // Add user back to random pool
-    await supabase
-      .from('random_pool')
-      .insert([{
-        user_id: userId,
-        event: team.event
-      }]);
+        // Add user back to random pool with date context
+        const { data: userRow } = await supabase
+          .from('users')
+          .select('name, email')
+          .eq('id', userId)
+          .single();
+        await supabase
+          .from('random_pool')
+          .insert([{
+            user_id: userId,
+            user_name: userRow?.name || '',
+            user_email: userRow?.email || '',
+            event: team.event,
+            event_date: (team as any).event_date
+          }]);
     return NextResponse.json({ message: 'You have left the team, and the team has been disbanded.' }, { status: 200 });
       } else {
         // Assign new leader (first member in the list)
@@ -57,13 +65,21 @@ export async function POST(request: NextRequest) {
         if (updateError) {
           return NextResponse.json({ message: 'Error updating team.' }, { status: 500 });
         }
-        // Add user back to random pool
-    await supabase
-      .from('random_pool')
-      .insert([{
-        user_id: userId,
-        event: team.event
-      }]);
+        // Add user back to random pool with date context
+        const { data: userRow } = await supabase
+          .from('users')
+          .select('name, email')
+          .eq('id', userId)
+          .single();
+        await supabase
+          .from('random_pool')
+          .insert([{
+            user_id: userId,
+            user_name: userRow?.name || '',
+            user_email: userRow?.email || '',
+            event: team.event,
+            event_date: (team as any).event_date
+          }]);
     return NextResponse.json({ message: 'You have left the team. Leadership has been transferred to the next member.' }, { status: 200 });
       }
     }
@@ -77,12 +93,20 @@ export async function POST(request: NextRequest) {
     if (updateError) {
       return NextResponse.json({ message: 'Error updating team.' }, { status: 500 });
     }
-    // Add user back to random pool
+    // Add user back to random pool with date context
+    const { data: userRow } = await supabase
+      .from('users')
+      .select('name, email')
+      .eq('id', userId)
+      .single();
     await supabase
       .from('random_pool')
       .insert([{
         user_id: userId,
-        event: team.event
+        user_name: userRow?.name || '',
+        user_email: userRow?.email || '',
+        event: team.event,
+        event_date: (team as any).event_date
       }]);
     return NextResponse.json({ message: 'You have successfully left the team.' }, { status: 200 });
   } catch (error) {

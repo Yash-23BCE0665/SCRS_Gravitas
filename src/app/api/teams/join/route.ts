@@ -104,7 +104,8 @@ export async function POST(request: NextRequest) {
       .from('random_pool')
       .delete()
       .eq('user_id', userId)
-      .eq('event', effectiveEvent);
+      .eq('event', effectiveEvent)
+      .eq('event_date', (team as any).event_date);
 
     // Delete any pending join requests from this user
     await supabase

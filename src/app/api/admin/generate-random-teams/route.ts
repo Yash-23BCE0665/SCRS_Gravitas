@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     const { teamSize = 4, event } = await request.json().catch(() => ({ teamSize: 4 }));
     const effectiveEvent = event || DEFAULT_EVENT;
 
-    // 1. Get users from random pool
+    // 1. Get users from random pool (with event_date)
     const { data: poolUsers, error: poolError } = await supabase
       .from('random_pool')
       .select('*')
@@ -88,30 +88,39 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Error fetching teams.' }, { status: 500 });
     }
 
-    // Map pool users to their full details
-    const unassignedUsers = poolUsers.map(pu => {
+    // Map pool users to their full details and keep event_date
+    type PoolUser = { id: string; name: string; email: string; event_date: string };
+    const unassignedUsers: PoolUser[] = poolUsers.map(pu => {
       const user = allUsers.find(u => u.id === pu.user_id);
-      return user || null;
-    }).filter(Boolean);
+      if (!user) return null;
+      return { id: user.id, name: user.name, email: user.email, event_date: pu.event_date } as PoolUser;
+    }).filter(Boolean) as PoolUser[];
 
     const createdTeamIds: string[] = [];
     const assignedToExisting: any[] = [];
     const failed: any[] = [];
 
-    // 4. First try to fill existing teams that have open slots
+    // 4. First try to fill existing teams that have open slots, date-matched
     for (const team of (teams || [])) {
       const members = team.members || [];
       const slots = teamSize - members.length;
       if (slots <= 0) continue;
 
-      const toAssign = unassignedUsers.splice(0, slots);
-      if (!toAssign.length) break;
+      // Only pick users with same event_date as team
+      const sameDateUsersIdx: number[] = [];
+      for (let i = 0; i < unassignedUsers.length && sameDateUsersIdx.length < slots; i++) {
+        if (unassignedUsers[i].event_date === team.event_date) {
+          sameDateUsersIdx.push(i);
+        }
+      }
+      if (!sameDateUsersIdx.length) continue;
 
-      const newMembers = [...members, ...toAssign.map((u: any) => ({
-        id: u.id,
-        name: u.name,
-        email: u.email
-      }))];
+      // Extract chosen users and remove from list
+      const toAssign = sameDateUsersIdx.map((idx, k) => unassignedUsers[idx]).filter(Boolean);
+      // Remove by index from unassignedUsers (in reverse to keep indices valid)
+      sameDateUsersIdx.sort((a,b)=>b-a).forEach(idx => unassignedUsers.splice(idx,1));
+
+      const newMembers = [...members, ...toAssign.map((u: PoolUser) => ({ id: u.id, name: u.name, email: u.email }))];
 
       const { error: updateErr } = await supabase
         .from('teams')
@@ -120,64 +129,71 @@ export async function POST(request: NextRequest) {
 
       if (updateErr) {
         failed.push({ teamId: team.id, error: updateErr });
-        unassignedUsers.unshift(...toAssign);
+        // Put back users if update failed
+        unassignedUsers.push(...toAssign);
         continue;
       }
 
-      assignedToExisting.push({ teamId: team.id, added: toAssign.map((u: any) => u.id) });
+      assignedToExisting.push({ teamId: team.id, added: toAssign.map((u: PoolUser) => u.id) });
 
-      // Remove assigned users from random pool
+      // Remove assigned users from random pool (date-scoped)
       for (const user of toAssign) {
         await supabase
           .from('random_pool')
           .delete()
           .eq('user_id', user.id)
-          .eq('event', effectiveEvent);
+          .eq('event', effectiveEvent)
+          .eq('event_date', user.event_date as any);
       }
     }
 
     // 5. If we have 2 or more users left, create new teams
     if (unassignedUsers.length >= 2) {
-      for (let i = 0; i < unassignedUsers.length; i += teamSize) {
-        const slice = unassignedUsers.slice(i, i + teamSize);
-        if (slice.length < 2) break; // Need at least 2 users for a new team
+      // Group remaining users by event_date and create teams per date
+      const byDate = new Map<string, PoolUser[]>();
+      for (const u of unassignedUsers) {
+        const arr = byDate.get(u.event_date) || [];
+        arr.push(u);
+        byDate.set(u.event_date, arr);
+      }
+      for (const [dateKey, arr] of byDate.entries()) {
+        for (let i = 0; i < arr.length; i += teamSize) {
+          const slice = arr.slice(i, i + teamSize);
+          if (slice.length < 2) break;
 
-        const members = slice.map((u: any) => ({
-          id: u.id,
-          name: u.name,
-          email: u.email
-        }));
+          const members = slice.map((u: PoolUser) => ({ id: u.id, name: u.name, email: u.email }));
+          const leaderIndex = Math.floor(Math.random() * members.length);
+          const leaderId = members[leaderIndex].id;
+          const teamName = `Team ${Date.now()}-${i / teamSize + 1}`;
 
-        const leaderIndex = Math.floor(Math.random() * members.length);
-        const leaderId = members[leaderIndex].id;
-        const teamName = `Team ${Date.now()}-${i / teamSize + 1}`;
+          const { data: created, error: insertError } = await supabase
+            .from('teams')
+            .insert({
+              name: teamName,
+              leader_id: leaderId,
+              members,
+              score: 0,
+              event: effectiveEvent,
+              event_date: dateKey,
+            })
+            .select()
+            .single();
 
-        const { data: created, error: insertError } = await supabase
-          .from('teams')
-          .insert({
-            name: teamName,
-            leader_id: leaderId,
-            members,
-            score: 0,
-            event: effectiveEvent
-          })
-          .select()
-          .single();
+          if (insertError || !created) {
+            failed.push({ users: slice, error: insertError });
+            continue;
+          }
 
-        if (insertError || !created) {
-          failed.push({ users: slice, error: insertError });
-          continue;
-        }
+          createdTeamIds.push(created.id);
 
-        createdTeamIds.push(created.id);
-
-        // Remove these users from random pool
-        for (const user of slice) {
-          await supabase
-            .from('random_pool')
-            .delete()
-            .eq('user_id', user.id)
-            .eq('event', effectiveEvent);
+          for (const user of slice) {
+            await supabase
+              .from('random_pool')
+              .delete()
+              .eq('user_id', user.id)
+              .eq('event', effectiveEvent)
+              .eq('event_date', dateKey as any);
+          }
         }
       }
     }

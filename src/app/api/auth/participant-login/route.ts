@@ -59,6 +59,29 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Auto-enqueue user into random pool if not in any team
+      const { data: existingTeams } = await supabase
+        .from('teams')
+        .select('id')
+        .contains('members', [{ email: email.toLowerCase() }]);
+      if (!existingTeams || existingTeams.length === 0) {
+        const { data: reg } = await supabase
+          .from('event_registration')
+          .select('*')
+          .eq('user_email', email.toLowerCase())
+          .maybeSingle();
+        if (reg?.event_date && reg?.event_key === 'escape-exe-ii') {
+          await supabase
+            .from('random_pool')
+            .upsert({
+              user_id: user.id,
+              user_name: user.name,
+              user_email: user.email,
+              event: 'escape-exe-ii',
+              event_date: reg.event_date,
+            }, { onConflict: 'user_id,event' as any });
+        }
+      }
       return NextResponse.json({ message: `Welcome, ${user.name}!`, user }, { status: 200 });
     } else {
       // Identifier-based password login (username/email/reg number)
@@ -113,6 +136,29 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ message: 'Invalid password.' }, { status: 401 });
       }
 
+      // Auto-enqueue on basic login if user is teamless
+      const { data: existingTeams2 } = await supabase
+        .from('teams')
+        .select('id')
+        .contains('members', [{ email: foundUser.email.toLowerCase() }]);
+      if (!existingTeams2 || existingTeams2.length === 0) {
+        const { data: reg2 } = await supabase
+          .from('event_registration')
+          .select('*')
+          .eq('user_email', foundUser.email.toLowerCase())
+          .maybeSingle();
+        if (reg2?.event_date && reg2?.event_key === 'escape-exe-ii') {
+          await supabase
+            .from('random_pool')
+            .upsert({
+              user_id: foundUser.id,
+              user_name: foundUser.name,
+              user_email: foundUser.email,
+              event: 'escape-exe-ii',
+              event_date: reg2.event_date,
+            }, { onConflict: 'user_id,event' as any });
+        }
+      }
       return NextResponse.json({ message: `Welcome back, ${foundUser.name}!`, user: foundUser }, { status: 200 });
     }
   } catch (error) {

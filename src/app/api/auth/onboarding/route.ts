@@ -27,6 +27,32 @@ export async function POST(request: NextRequest) {
     if (error) {
       return NextResponse.json({ message: 'Failed to save user.' }, { status: 500 });
     }
+    // Auto-enqueue in random pool if user not in any team
+    const { data: existingTeams } = await supabase
+      .from('teams')
+      .select('id')
+      .contains('members', [{ email: email.toLowerCase() }]);
+
+    if (!existingTeams || existingTeams.length === 0) {
+      const { data: reg } = await supabase
+        .from('event_registration')
+        .select('*')
+        .eq('user_email', email.toLowerCase())
+        .eq('event_key', 'escape-exe-ii')
+        .maybeSingle();
+      if (reg?.event_date) {
+        await supabase
+          .from('random_pool')
+          .upsert({
+            user_id: user.id,
+            user_name: user.name,
+            user_email: user.email,
+            event: 'escape-exe-ii',
+            event_date: reg.event_date,
+          }, { onConflict: 'user_id,event' as any });
+      }
+    }
+
     return NextResponse.json({ message: 'Profile completed. Welcome!', user }, { status: 200 });
   } catch (error) {
     return NextResponse.json({ message: 'An internal server error occurred.' }, { status: 500 });
