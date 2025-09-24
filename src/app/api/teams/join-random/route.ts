@@ -62,28 +62,9 @@ export async function POST(request: NextRequest) {
     );
 
     if (availableTeams.length === 0) {
-      // If no teams with space, create a new team
-      const teamName = `Team ${Date.now()}`;
-      const { data: newTeam, error: createError } = await supabase
-        .from('teams')
-        .insert({
-          name: teamName,
-          leader_id: userId,
-          members: [{ id: userId, name: userName, email: userEmail }],
-          score: 0,
-          event: effectiveEvent
-        })
-        .select()
-        .single();
-
-      if (createError) {
-        return NextResponse.json({ message: 'Error creating new team.' }, { status: 500 });
-      }
-
       return NextResponse.json({ 
-        message: 'New team created as no teams were available for joining.',
-        team: newTeam
-      });
+        message: 'No teams are available to join for your event date right now. Please try again later.'
+      }, { status: 404 });
     }
 
     // Enqueue in random_pool with event_date for admin batching
