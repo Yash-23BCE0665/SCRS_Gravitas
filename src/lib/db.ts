@@ -63,20 +63,20 @@ export async function updateTeam(id: string, updates: Partial<Team>) {
 }
 
 // Event registration functions
+
+
 export async function getEventRegistrations(eventKey: EventKey) {
   const { data, error } = await supabase
-    .from('event_registrations')
-    .select('user_id')
+    .from('event_registration')
+    .select('user_email')
     .eq('event_key', eventKey);
-  
   if (error) throw error;
-  return new Set(data.map(r => r.user_id));
+  return new Set(data.map(r => r.user_email));
 }
 
-export async function registerForEvent(eventKey: EventKey, userId: string) {
+export async function registerForEvent(eventKey: EventKey, userEmail: string, regNo: string) {
   const { error } = await supabase
-    .from('event_registrations')
-    .insert({ event_key: eventKey, user_id: userId });
-  
+    .from('event_registration')
+    .insert({ event_key: eventKey, user_email: userEmail, reg_no: regNo });
   if (error) throw error;
 }

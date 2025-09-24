@@ -64,14 +64,62 @@ export default function AdminDashboard() {
   };
 
   useEffect(() => {
-    const isAdmin = sessionStorage.getItem("gravitas-admin");
-    if (!isAdmin) {
-      router.push('/admin/login');
-      return;
-    }
-    fetchTeams();
-    fetchPool();
-  }, [router]);
+    let mounted = true;
+
+    const initializeDashboard = async () => {
+      try {
+        // Check session first
+        const sessionRes = await fetch('/api/auth/admin/session', {
+          credentials: 'include'
+        });
+
+        if (!sessionRes.ok) {
+          if (mounted) {
+            toast({
+              variant: "destructive",
+              title: "Session Error",
+              description: "Please log in again.",
+            });
+          }
+          window.location.href = '/admin/login';
+          return;
+        }
+
+        const { isAuthenticated } = await sessionRes.json();
+        if (!isAuthenticated) {
+          if (mounted) {
+            toast({
+              variant: "destructive",
+              title: "Authentication Error",
+              description: "Session invalid. Please log in again.",
+            });
+          }
+          window.location.href = '/admin/login';
+          return;
+        }
+
+        // Session is valid, fetch dashboard data
+        if (mounted) {
+          await Promise.all([fetchTeams(), fetchPool()]);
+        }
+      } catch (error) {
+        console.error('Dashboard initialization error:', error);
+        if (mounted) {
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Failed to load dashboard. Please try again.",
+          });
+        }
+      }
+    };
+
+    initializeDashboard();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const fetchTeams = async () => {
     setIsLoading(true);
@@ -96,9 +144,19 @@ export default function AdminDashboard() {
   const fetchPool = async () => {
     try {
       const res = await fetch('/api/admin/random-pool');
+      if (!res.ok) {
+        throw new Error('Failed to fetch pool count');
+      }
       const data = await res.json();
       setPoolCount(data.count || 0);
-    } catch {}
+    } catch (error) {
+      console.error('Error fetching pool count:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to fetch random pool count",
+      });
+    }
   }
 
   const handleGenerateRandomTeams = async () => {
@@ -185,10 +243,24 @@ export default function AdminDashboard() {
     }
   };
   
-  const handleLogout = () => {
-    sessionStorage.removeItem("gravitas-admin");
-    router.push('/admin/login');
-    toast({title: "Logged out"});
+  const handleLogout = async () => {
+    try {
+      const res = await fetch('/api/auth/admin-logout', {
+        method: 'POST'
+      });
+      if (!res.ok) {
+        throw new Error('Logout failed');
+      }
+      router.push('/admin/login');
+      toast({title: "Logged out successfully"});
+    } catch (error) {
+      console.error('Logout error:', error);
+      toast({
+        variant: "destructive",
+        title: "Logout Error",
+        description: "Failed to logout. Please try again.",
+      });
+    }
   }
 
 
@@ -207,7 +279,7 @@ export default function AdminDashboard() {
           Random pool: <span className="font-mono font-semibold">{poolCount}</span> participant(s)
         </div>
         <div className="flex gap-2">
-          <Button onClick={handleGenerateRandomTeams} disabled={isGenerating || poolCount < 2}>
+          <Button onClick={handleGenerateRandomTeams} disabled={isGenerating || poolCount === 0}>
             {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
             Generate Random Teams
           </Button>

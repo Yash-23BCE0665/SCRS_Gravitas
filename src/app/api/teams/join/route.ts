@@ -90,6 +90,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Error updating team.' }, { status: 500 });
     }
 
+    // Remove user from random pool if they were in it
+    await supabase
+      .from('random_pool')
+      .delete()
+      .eq('user_id', userId)
+      .eq('event', effectiveEvent);
+
+    // Delete any pending join requests from this user
+    await supabase
+      .from('join_requests')
+      .delete()
+      .eq('user_id', userId);
+
     return NextResponse.json({ 
       message: `Successfully joined team '${team.name}'!`, 
       team: updatedTeam, 

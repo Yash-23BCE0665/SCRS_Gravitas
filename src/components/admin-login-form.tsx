@@ -42,6 +42,15 @@ export default function AdminLoginForm() {
   const onSubmit = async (values: FormValues) => {
     setIsLoading(true);
     try {
+      // First check if database is accessible
+      const dbCheck = await fetch('/api/admin/check-db');
+      const dbStatus = await dbCheck.json();
+      console.log('Database status:', dbStatus);
+
+      if (!dbCheck.ok) {
+        throw new Error('Database connection failed. Please try again later.');
+      }
+
       const response = await fetch('/api/auth/admin-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -49,17 +58,22 @@ export default function AdminLoginForm() {
       });
 
       const result = await response.json();
+      console.log('Login response:', { status: response.status, ok: response.ok });
 
       if (!response.ok) {
         throw new Error(result.message || "Login failed.");
       }
       
-      sessionStorage.setItem("gravitas-admin", JSON.stringify(result.admin));
       toast({
         title: "Login Successful",
         description: "Redirecting to dashboard...",
       });
-      router.push('/admin');
+
+      // Wait a brief moment to ensure the cookie is set
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Use window.location for a full page refresh after login
+      window.location.href = '/admin';
 
     } catch (error) {
       toast({

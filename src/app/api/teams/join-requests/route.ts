@@ -91,10 +91,18 @@ export async function POST(request: NextRequest) {
       .from('teams')
       .update({ members: updatedMembers })
       .eq('id', team.id);
+    // Mark request as accepted
     await supabase
       .from('join_requests')
       .update({ status: 'accepted' })
       .eq('id', requestId);
+
+    // Remove user from random pool if present
+    await supabase
+      .from('random_pool')
+      .delete()
+      .eq('user_id', joinRequest.user_id);
+
     return NextResponse.json({ message: 'User added to team.' });
   } catch (error) {
     return NextResponse.json({ message: 'An internal server error occurred.' }, { status: 500 });

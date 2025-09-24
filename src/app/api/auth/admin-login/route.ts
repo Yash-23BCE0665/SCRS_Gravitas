@@ -5,8 +5,10 @@ import type { AdminUser } from '@/lib/types';
 export async function POST(request: NextRequest) {
   try {
     const { username, password } = await request.json();
+    console.log('Admin login attempt:', { username });
 
     if (!username || !password) {
+      console.log('Missing credentials');
       return NextResponse.json({ message: 'Missing username or password.' }, { status: 400 });
     }
 
@@ -28,11 +30,36 @@ export async function POST(request: NextRequest) {
       }, { status: 401 });
     }
 
-    // In a real app, you would issue a secure token (e.g., JWT) here.
-    // For this prototype, we'll just confirm success. The client will store a session flag.
     const adminSessionData: Pick<AdminUser, 'id' | 'username'> = { id: admin.id, username: admin.username };
+    
+    // Create session data
+    const sessionData = {
+      username: admin.username,
+      id: admin.id,
+      timestamp: Date.now()
+    };
 
-    return NextResponse.json({ message: 'Admin login successful.', admin: adminSessionData }, { status: 200 });
+    // Create the response
+    const response = NextResponse.json(
+      { 
+        message: 'Admin login successful.',
+        admin: { username: admin.username }
+      },
+      { status: 200 }
+    );
+
+    // Set session cookie
+    response.cookies.set({
+      name: 'admin-session',
+      value: JSON.stringify(sessionData),
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 60 * 24 // 24 hours
+    });
+
+    return response;
 
   } catch (error) {
     return NextResponse.json({ message: 'An internal server error occurred.' }, { status: 500 });

@@ -28,6 +28,37 @@ export async function POST(request: NextRequest) {
       if (userError) {
         return NextResponse.json({ message: 'Error creating user.' }, { status: 500 });
       }
+
+      // Add user to random pool if not already in a team
+      const { data: userTeams } = await supabase
+        .from('teams')
+        .select('id')
+        .contains('members', [{ id: user.id }]);
+
+      if (!userTeams || userTeams.length === 0) {
+        // Add to random pool if not already there
+        const { data: existingPool } = await supabase
+          .from('random_pool')
+          .select('id')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (!existingPool) {
+          const { error: poolError } = await supabase
+            .from('random_pool')
+            .insert({
+              user_id: user.id,
+              user_name: user.name,
+              user_email: user.email.toLowerCase(),
+              event: regData[0].event_key // Use the event from registration
+            });
+          
+          if (poolError) {
+            console.error('Error adding user to random pool:', poolError);
+          }
+        }
+      }
+
       return NextResponse.json({ message: `Welcome, ${user.name}!`, user }, { status: 200 });
     } else {
       // Identifier-based password login (username/email/reg number)

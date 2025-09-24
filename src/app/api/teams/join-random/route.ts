@@ -8,7 +8,7 @@ const MYSTERY_TEAM_NAMES = [
     "The Enigma Squad", "Cipher Syndicate", "Vortex Voyagers", "Phantom Phalanx", "Eclipse Raiders"
 ];
 
-// POST to enqueue user for random team assignment (admin will create teams)
+// POST to send join requests to teams with available slots
 export async function POST(request: NextRequest) {
   try {
     const { userId, userEmail, userName, event } = await request.json();
@@ -40,33 +40,80 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: `User is already in a team.` }, { status: 409 });
     }
 
-    // Check if user already in random pool
-    const { data: existingPool } = await supabase
-      .from('random_pool')
+    // Check for existing pending requests
+    const { data: existingRequests } = await supabase
+      .from('join_requests')
       .select('id')
       .eq('user_id', userId)
-      .eq('event', effectiveEvent)
-      .maybeSingle();
-    if (existingPool) {
-      return NextResponse.json({ message: 'You are already in the random selection queue.' }, { status: 200 });
+      .eq('status', 'pending');
+
+    if (existingRequests && existingRequests.length > 0) {
+      return NextResponse.json({ 
+        message: 'You already have pending join requests. Please wait for team leaders to respond.' 
+      }, { status: 409 });
     }
 
-    // Enqueue user in random_pool
-    const { error: enqueueError } = await supabase
-      .from('random_pool')
-      .insert({
-        user_id: userId,
-        user_name: userName,
-        user_email: userEmail,
-        event: effectiveEvent,
+    // Find teams with available slots
+    const { data: teams, error: teamsError } = await supabase
+      .from('teams')
+      .select('id, name, leader_id, members, event')
+      .eq('event', effectiveEvent);
+
+    if (teamsError) {
+      return NextResponse.json({ message: 'Error fetching teams.' }, { status: 500 });
+    }
+
+    // Filter teams that have space
+    const availableTeams = (teams || []).filter(team => 
+      team.members && team.members.length < MAX_TEAM_MEMBERS
+    );
+
+    if (availableTeams.length === 0) {
+      // If no teams with space, create a new team
+      const teamName = `Team ${Date.now()}`;
+      const { data: newTeam, error: createError } = await supabase
+        .from('teams')
+        .insert({
+          name: teamName,
+          leader_id: userId,
+          members: [{ id: userId, name: userName, email: userEmail }],
+          score: 0,
+          event: effectiveEvent
+        })
+        .select()
+        .single();
+
+      if (createError) {
+        return NextResponse.json({ message: 'Error creating new team.' }, { status: 500 });
+      }
+
+      return NextResponse.json({ 
+        message: 'New team created as no teams were available for joining.',
+        team: newTeam
       });
-    if (enqueueError) {
-      return NextResponse.json({ message: 'Error adding to random queue.' }, { status: 500 });
+    }
+
+    // Send join requests to all available teams
+    const joinRequests = availableTeams.map(team => ({
+      team_id: team.id,
+      user_id: userId,
+      user_name: userName,
+      user_email: userEmail,
+      status: 'pending'
+    }));
+
+    const { error: requestError } = await supabase
+      .from('join_requests')
+      .insert(joinRequests);
+
+    if (requestError) {
+      return NextResponse.json({ message: 'Error sending join requests.' }, { status: 500 });
     }
 
     return NextResponse.json({ 
-      message: 'You have been added to the random team queue. The admins will assign teams shortly.'
-    }, { status: 200 });
+      message: `Join requests sent to ${availableTeams.length} teams. Please wait for a team leader to accept.`,
+      requestCount: availableTeams.length
+    });
 
   } catch (error) {
     return NextResponse.json({ message: 'An internal server error occurred.' }, { status: 500 });

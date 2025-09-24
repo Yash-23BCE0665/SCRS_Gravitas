@@ -39,7 +39,14 @@ export async function POST(request: NextRequest) {
         if (deleteError) {
           return NextResponse.json({ message: 'Error disbanding team.' }, { status: 500 });
         }
-        return NextResponse.json({ message: 'You have left the team, and the team has been disbanded.' }, { status: 200 });
+        // Add user back to random pool
+    await supabase
+      .from('random_pool')
+      .insert([{
+        user_id: userId,
+        event: team.event
+      }]);
+    return NextResponse.json({ message: 'You have left the team, and the team has been disbanded.' }, { status: 200 });
       } else {
         // Assign new leader (first member in the list)
         const newLeaderId = updatedMembers[0].id;
@@ -50,7 +57,14 @@ export async function POST(request: NextRequest) {
         if (updateError) {
           return NextResponse.json({ message: 'Error updating team.' }, { status: 500 });
         }
-        return NextResponse.json({ message: 'You have left the team. Leadership has been transferred to the next member.' }, { status: 200 });
+        // Add user back to random pool
+    await supabase
+      .from('random_pool')
+      .insert([{
+        user_id: userId,
+        event: team.event
+      }]);
+    return NextResponse.json({ message: 'You have left the team. Leadership has been transferred to the next member.' }, { status: 200 });
       }
     }
 
@@ -63,6 +77,13 @@ export async function POST(request: NextRequest) {
     if (updateError) {
       return NextResponse.json({ message: 'Error updating team.' }, { status: 500 });
     }
+    // Add user back to random pool
+    await supabase
+      .from('random_pool')
+      .insert([{
+        user_id: userId,
+        event: team.event
+      }]);
     return NextResponse.json({ message: 'You have successfully left the team.' }, { status: 200 });
   } catch (error) {
     return NextResponse.json({ message: 'An internal server error occurred.' }, { status: 500 });

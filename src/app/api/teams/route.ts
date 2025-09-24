@@ -101,6 +101,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Error creating team.' }, { status: 500 });
     }
 
+    // Remove the user from random pool
+    await supabase
+      .from('random_pool')
+      .delete()
+      .eq('user_id', userId)
+      .eq('event', effectiveEvent);
+
+    // Also remove any pending join requests from this user
+    await supabase
+      .from('join_requests')
+      .delete()
+      .eq('user_id', userId);
+
     return NextResponse.json({ 
       message: `Team '${teamName}' created successfully!`, 
       team, 
