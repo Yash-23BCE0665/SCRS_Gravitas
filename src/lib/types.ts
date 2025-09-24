@@ -25,6 +25,8 @@ export interface Team {
   members: TeamMember[];
   score: number;
   event: EventKey;
+  event_date?: string; // ISO date (YYYY-MM-DD)
+  slot_time?: string;  // HH:MM:SS
 }
 
 export type EventKey = 'escape-exe-ii';

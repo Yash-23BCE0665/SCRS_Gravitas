@@ -68,6 +68,7 @@ import {
 const formSchema = z.object({
   teamName: z.string().optional(),
   teamId: z.string().optional(),
+  slotTime: z.string().optional(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -78,6 +79,8 @@ export default function HomePage() {
   const [currentTeam, setCurrentTeam] = useState<Team | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isTeamViewLoading, setIsTeamViewLoading] = useState(true);
+  const [leaderEventDate, setLeaderEventDate] = useState<string | null>(null);
+  const [availableSlots, setAvailableSlots] = useState<string[]>([]);
 
   useEffect(() => {
     const user = sessionStorage.getItem("gravitas-user");
@@ -91,6 +94,15 @@ export default function HomePage() {
         // If user is logged in but has no team, check if they are part of any team.
         fetchUserTeam(parsedUser.id);
       }
+      fetch(`/api/registration/me?userEmail=${encodeURIComponent(parsedUser.email)}`)
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data?.event_date) {
+            setLeaderEventDate(data.event_date);
+            loadAvailableSlots(data.event_date);
+          }
+        })
+        .catch(() => {});
     } else {
        setIsTeamViewLoading(false);
     }
@@ -135,12 +147,37 @@ export default function HomePage() {
     }
   }
 
+  const loadAvailableSlots = async (date: string) => {
+    try {
+      const base = new Date(`${date}T11:00:00`);
+      const slots: string[] = [];
+      for (let i = 0; i < 16; i++) {
+        const d = new Date(base.getTime() + i * 30 * 60000);
+        const hh = `${d.getHours()}`.padStart(2, '0');
+        const mm = `${d.getMinutes()}`.padStart(2, '0');
+        slots.push(`${hh}:${mm}:00`);
+      }
+
+      const res = await fetch(`/api/teams?event_date=${encodeURIComponent(date)}`);
+      const teams: Team[] = res.ok ? await res.json() : [];
+      const counts = new Map<string, number>();
+      teams.forEach(t => {
+        const key = (t.slot_time || '').slice(0,8);
+        if (!key) return;
+        counts.set(key, (counts.get(key) || 0) + 1);
+      });
+      const available = slots.filter(s => (counts.get(s) || 0) < 2);
+      setAvailableSlots(available);
+    } catch {}
+  }
+
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       teamName: "",
       teamId: "",
+      slotTime: "",
     },
   });
 
@@ -149,6 +186,7 @@ export default function HomePage() {
       form.reset({
         teamName: "",
         teamId: "",
+        slotTime: "",
       });
     }
   }, [currentUser, form]);
@@ -198,7 +236,7 @@ export default function HomePage() {
 
       switch (endpoint) {
         case "create":
-          body = JSON.stringify({ ...commonPayload, teamName: values.teamName });
+          body = JSON.stringify({ ...commonPayload, teamName: values.teamName, slotTime: values.slotTime });
           url = "/api/teams";
           break;
         case "join":
@@ -417,6 +455,42 @@ export default function HomePage() {
                     </FormItem>
                   )}
                 />
+                {leaderEventDate && (
+                  <div className="mt-4 space-y-2">
+                    <div className="text-sm">Your Event Date: <span className="font-mono font-semibold">{leaderEventDate}</span></div>
+                    <FormField
+                      control={form.control}
+                      name="slotTime"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Choose 30-min Slot</FormLabel>
+                          <FormControl>
+                            <select
+                              className="w-full border rounded h-10 bg-background"
+                              value={field.value}
+                              onChange={(e) => field.onChange(e.target.value)}
+                              onBlur={field.onBlur}
+                            >
+                              <option value="">Select a slot</option>
+                              {availableSlots.map(s => (
+                                <option key={s} value={s}>{s.slice(0,5)} - {/* end */}
+                                  {(() => {
+                                    const [h,m] = s.split(':');
+                                    const d = new Date(`1970-01-01T${h}:${m}:00`);
+                                    const end = new Date(d.getTime() + 30 * 60000);
+                                    return `${String(end.getHours()).padStart(2,'0')}:${String(end.getMinutes()).padStart(2,'0')}`;
+                                  })()}
+                                </option>
+                              ))}
+                            </select>
+                          </FormControl>
+                          <FormDescription>Slots start from 11:00 and allow max 2 teams per slot.</FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                )}
               </CardContent>
               <Button
                 disabled={isLoading}

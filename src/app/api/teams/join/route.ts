@@ -37,6 +37,15 @@ export async function POST(request: NextRequest) {
       .select('*')
       .eq('event_key', effectiveEvent)
       .eq('user_email', userEmail);
+    // Enforce same event_date as team
+    const userEventDate = eventRegistration?.[0]?.event_date as string | undefined;
+    if (!userEventDate) {
+      return NextResponse.json({ message: 'No event date found for this user.' }, { status: 403 });
+    }
+    if ((team as any).event_date && (team as any).event_date !== userEventDate) {
+      return NextResponse.json({ message: 'You can only join a team scheduled for your date.' }, { status: 400 });
+    }
+
 
     if (!eventRegistration?.length) {
       return NextResponse.json({ message: `Email ${userEmail} not registered for this event.` }, { status: 403 });

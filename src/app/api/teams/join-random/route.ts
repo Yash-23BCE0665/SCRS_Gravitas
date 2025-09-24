@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
 
     const effectiveEvent = event || DEFAULT_EVENT;
 
-    // Verify event registration
+    // Verify event registration and extract event_date
     const { data: eventRegistration } = await supabase
       .from('event_registration')
       .select('*')
@@ -28,6 +28,11 @@ export async function POST(request: NextRequest) {
 
     if (!eventRegistration?.length) {
       return NextResponse.json({ message: `Email ${userEmail} not registered for this event.` }, { status: 403 });
+    }
+
+    const eventDate = eventRegistration?.[0]?.event_date as string | undefined;
+    if (!eventDate) {
+      return NextResponse.json({ message: 'No event date found for this user.' }, { status: 403 });
     }
 
     // Check if user is already in any team
@@ -40,24 +45,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: `User is already in a team.` }, { status: 409 });
     }
 
-    // Check for existing pending requests
-    const { data: existingRequests } = await supabase
-      .from('join_requests')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('status', 'pending');
-
-    if (existingRequests && existingRequests.length > 0) {
-      return NextResponse.json({ 
-        message: 'You already have pending join requests. Please wait for team leaders to respond.' 
-      }, { status: 409 });
-    }
-
-    // Find teams with available slots
+    // Find teams with available slots on the same date
     const { data: teams, error: teamsError } = await supabase
       .from('teams')
-      .select('id, name, leader_id, members, event')
-      .eq('event', effectiveEvent);
+      .select('id, name, leader_id, members, event, event_date')
+      .eq('event', effectiveEvent)
+      .eq('event_date', eventDate);
 
     if (teamsError) {
       return NextResponse.json({ message: 'Error fetching teams.' }, { status: 500 });
@@ -93,26 +86,24 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Send join requests to all available teams
-    const joinRequests = availableTeams.map(team => ({
-      team_id: team.id,
-      user_id: userId,
-      user_name: userName,
-      user_email: userEmail,
-      status: 'pending'
-    }));
-
-    const { error: requestError } = await supabase
-      .from('join_requests')
-      .insert(joinRequests);
-
-    if (requestError) {
-      return NextResponse.json({ message: 'Error sending join requests.' }, { status: 500 });
+    // Enqueue in random_pool with event_date for admin batching
+    const { data: existingPool } = await supabase
+      .from('random_pool')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('event', effectiveEvent)
+      .maybeSingle();
+    if (!existingPool) {
+      const { error: enqueueErr } = await supabase
+        .from('random_pool')
+        .insert({ user_id: userId, user_name: userName, user_email: userEmail, event: effectiveEvent, event_date: eventDate });
+      if (enqueueErr) {
+        return NextResponse.json({ message: 'Error adding to random queue.' }, { status: 500 });
+      }
     }
 
     return NextResponse.json({ 
-      message: `Join requests sent to ${availableTeams.length} teams. Please wait for a team leader to accept.`,
-      requestCount: availableTeams.length
+      message: 'You have been added to the random team queue for your date. Admins will assign teams shortly.'
     });
 
   } catch (error) {
