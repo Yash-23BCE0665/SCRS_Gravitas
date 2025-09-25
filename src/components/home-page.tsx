@@ -168,7 +168,15 @@ export default function HomePage() {
         if (!key) return;
         counts.set(key, (counts.get(key) || 0) + 1);
       });
-      const available = slots.filter(s => (counts.get(s) || 0) < 2);
+      const blockedStarts = new Set([
+        '17:00:00',
+        '17:30:00',
+        '18:00:00',
+        '18:30:00',
+      ]);
+      const available = slots
+        .filter(s => !blockedStarts.has(s))
+        .filter(s => (counts.get(s) || 0) < 2);
       setAvailableSlots(available);
     } catch {}
   }
