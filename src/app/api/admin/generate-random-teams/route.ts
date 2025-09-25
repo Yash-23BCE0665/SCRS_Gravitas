@@ -56,7 +56,8 @@ export async function POST(request: NextRequest) {
     const effectiveEvent = event || DEFAULT_EVENT;
 
     // 1. Get users from random pool (with event_date)
-    const { data: poolUsers, error: poolError } = await supabase
+    const client = supabaseAdmin || supabase;
+    const { data: poolUsers, error: poolError } = await client
       .from('random_pool')
       .select('*')
       .eq('event', effectiveEvent);
@@ -70,7 +71,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. Get all users' details
-    const { data: allUsers, error: usersError } = await supabase
+    const { data: allUsers, error: usersError } = await client
       .from('users')
       .select('id, name, email')
       .in('id', poolUsers.map(pu => pu.user_id));
@@ -80,7 +81,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. Get all teams for this event
-    const { data: teams, error: teamsError } = await supabase
+    const { data: teams, error: teamsError } = await client
       .from('teams')
       .select('*')
       .eq('event', effectiveEvent);
@@ -123,7 +124,7 @@ export async function POST(request: NextRequest) {
 
       const newMembers = [...members, ...toAssign.map((u: PoolUser) => ({ id: u.id, name: u.name, email: u.email }))];
 
-      const { error: updateErr } = await supabase
+      const { error: updateErr } = await client
         .from('teams')
         .update({ members: newMembers })
         .eq('id', team.id);
@@ -139,7 +140,7 @@ export async function POST(request: NextRequest) {
 
       // Remove assigned users from random pool (date-scoped)
       for (const user of toAssign) {
-        await supabase
+        await client
           .from('random_pool')
           .delete()
           .eq('user_id', user.id)
@@ -167,7 +168,7 @@ export async function POST(request: NextRequest) {
           const leaderId = members[leaderIndex].id;
           const teamName = `Team ${Date.now()}-${i / teamSize + 1}`;
 
-          const { data: created, error: insertError } = await supabase
+          const { data: created, error: insertError } = await client
             .from('teams')
             .insert({
               name: teamName,
@@ -188,7 +189,7 @@ export async function POST(request: NextRequest) {
           createdTeamIds.push(created.id);
 
           for (const user of slice) {
-            await supabase
+            await client
               .from('random_pool')
               .delete()
               .eq('user_id', user.id)
