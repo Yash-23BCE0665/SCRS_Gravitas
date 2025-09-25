@@ -8,11 +8,6 @@ import { SupabaseAuthListener } from "@/components/supabase-auth-listener";
 export const metadata: Metadata = {
   title: 'escape-exe',
   description: 'A VIT event companion app.',
-  icons: {
-    icon: '/icon.jpg',
-    shortcut: '/icon.jpg',
-    apple: '/icon.jpg',
-  },
 };
 
 export default function RootLayout({
