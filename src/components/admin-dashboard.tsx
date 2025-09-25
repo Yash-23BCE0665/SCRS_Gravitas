@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Users, Save, Loader2, Edit, Crown, LogOut, UserX, GitMerge } from "lucide-react";
+import { Users, Save, Loader2, Edit, Crown, LogOut, UserX, GitMerge, UserCheck } from "lucide-react";
 import { useMemo } from "react";
 
 
@@ -38,6 +38,10 @@ export default function AdminDashboard() {
   const [mergeFromId, setMergeFromId] = useState<string>("");
   const [mergeToId, setMergeToId] = useState<string>("");
   const [isMerging, setIsMerging] = useState(false);
+  const [assignLeaderTeamId, setAssignLeaderTeamId] = useState<string>("");
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [isAssigningLeader, setIsAssigningLeader] = useState(false);
+  const [isLoadingMembers, setIsLoadingMembers] = useState(false);
   const { toast } = useToast();
   const router = useRouter();
   function RandomPoolList() {
@@ -325,6 +329,43 @@ export default function AdminDashboard() {
     }
   }
 
+  const handleLoadTeamMembers = async (teamId: string) => {
+    setIsLoadingMembers(true);
+    try {
+      const res = await fetch(`/api/admin/assign-leader?teamId=${teamId}`);
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.message || 'Failed to load team members');
+      setTeamMembers(result.members || []);
+      setAssignLeaderTeamId(teamId);
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Error', description: e instanceof Error ? e.message : 'Unknown error' });
+    } finally {
+      setIsLoadingMembers(false);
+    }
+  };
+
+  const handleAssignLeader = async (newLeaderId: string) => {
+    if (!assignLeaderTeamId) return;
+    setIsAssigningLeader(true);
+    try {
+      const res = await fetch('/api/admin/assign-leader', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamId: assignLeaderTeamId, newLeaderId })
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.message || 'Failed to assign leader');
+      toast({ title: 'Success', description: `Leader assigned: ${result.newLeader.name}` });
+      setAssignLeaderTeamId("");
+      setTeamMembers([]);
+      fetchTeams();
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Error', description: e instanceof Error ? e.message : 'Unknown error' });
+    } finally {
+      setIsAssigningLeader(false);
+    }
+  };
+
 
   if (isLoading) {
     return (
@@ -433,6 +474,97 @@ export default function AdminDashboard() {
                   {isMerging ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <GitMerge className="mr-2 h-4 w-4" />}
                   Merge
                 </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="secondary" size="sm">
+                <UserCheck className="mr-2 h-4 w-4" /> Assign Leader
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Assign Team Leader</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm mb-1">Select Team</label>
+                  <select
+                    className="w-full border rounded px-3 py-2 bg-background"
+                    value={assignLeaderTeamId}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        handleLoadTeamMembers(e.target.value);
+                      } else {
+                        setAssignLeaderTeamId("");
+                        setTeamMembers([]);
+                      }
+                    }}
+                  >
+                    <option value="">Select team to assign leader</option>
+                    {teams.map(t => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} — {t.event} — {t.event_date || ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {isLoadingMembers && (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                    <span className="ml-2">Loading team members...</span>
+                  </div>
+                )}
+                {teamMembers.length > 0 && (
+                  <div>
+                    <label className="block text-sm mb-2">Select New Leader</label>
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {teamMembers.map((member) => (
+                        <div
+                          key={member.id}
+                          className={`p-3 border rounded-md cursor-pointer transition-colors ${
+                            member.isCurrentLeader 
+                              ? 'bg-primary/10 border-primary' 
+                              : 'hover:bg-muted/50'
+                          }`}
+                          onClick={() => !member.isCurrentLeader && handleAssignLeader(member.id)}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="font-medium">{member.name}</div>
+                              <div className="text-sm text-muted-foreground">{member.email}</div>
+                            </div>
+                            <div className="flex items-center">
+                              {member.isCurrentLeader && (
+                                <Crown className="h-4 w-4 text-primary mr-2" />
+                              )}
+                              {member.isCurrentLeader ? (
+                                <span className="text-sm text-primary font-medium">Current Leader</span>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={isAssigningLeader}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleAssignLeader(member.id);
+                                  }}
+                                >
+                                  {isAssigningLeader ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    'Assign'
+                                  )}
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </DialogContent>
           </Dialog>
