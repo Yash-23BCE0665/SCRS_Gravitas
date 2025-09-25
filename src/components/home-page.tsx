@@ -345,6 +345,16 @@ export default function HomePage() {
             {currentTeam.name}
           </p>
           <CardDescription>Event: {EVENTS.find(e => e.key === currentTeam.event)?.name}</CardDescription>
+          {currentTeam.event_date && (
+            <CardDescription className="text-sm text-muted-foreground">
+              📅 Event Date: <span className="font-mono font-semibold">{currentTeam.event_date}</span>
+            </CardDescription>
+          )}
+          {currentTeam.slot_time && (
+            <CardDescription className="text-sm text-muted-foreground">
+              ⏰ Time Slot: <span className="font-mono font-semibold">{currentTeam.slot_time.slice(0,5)} - {currentTeam.slot_end?.slice(0,5) || 'N/A'}</span>
+            </CardDescription>
+          )}
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="flex items-center space-x-4">
@@ -364,6 +374,15 @@ export default function HomePage() {
                 <DialogTitle className="font-headline text-2xl text-primary tracking-wide">
                   {currentTeam.name}
                 </DialogTitle>
+                <div className="space-y-1 text-sm text-muted-foreground">
+                  <div>Event: {EVENTS.find(e => e.key === currentTeam.event)?.name}</div>
+                  {currentTeam.event_date && (
+                    <div>📅 Date: <span className="font-mono font-semibold">{currentTeam.event_date}</span></div>
+                  )}
+                  {currentTeam.slot_time && (
+                    <div>⏰ Time: <span className="font-mono font-semibold">{currentTeam.slot_time.slice(0,5)} - {currentTeam.slot_end?.slice(0,5) || 'N/A'}</span></div>
+                  )}
+                </div>
               </DialogHeader>
               <ul className="space-y-2 font-mono">
                 {currentTeam.members.map((member) => (

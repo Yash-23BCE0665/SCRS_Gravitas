@@ -27,6 +27,7 @@ export interface Team {
   event: EventKey;
   event_date?: string; // ISO date (YYYY-MM-DD)
   slot_time?: string;  // HH:MM:SS
+  slot_end?: string;   // HH:MM:SS
 }
 
 export type EventKey = 'escape-exe-ii';
