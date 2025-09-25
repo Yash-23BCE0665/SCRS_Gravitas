@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
 
 const DEFAULT_ADMIN = {
   username: 'admin',
@@ -9,7 +9,8 @@ const DEFAULT_ADMIN = {
 export async function GET() {
   try {
     // Check if admin table exists and has any users
-    const { data: adminCount, error: countError } = await supabase
+    const client = supabaseAdmin || supabase;
+    const { data: adminCount, error: countError } = await client
       .from('admin')
       .select('*', { count: 'exact' });
 
@@ -20,7 +21,7 @@ export async function GET() {
 
     // If no admins exist, create the default admin
     if (!adminCount || adminCount.length === 0) {
-      const { data: newAdmin, error: createError } = await supabase
+      const { data: newAdmin, error: createError } = await client
         .from('admin')
         .insert([DEFAULT_ADMIN])
         .select()

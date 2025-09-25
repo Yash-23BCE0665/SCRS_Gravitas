@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
 
 // POST: Create a join request for a team
 export async function POST(request: NextRequest) {
@@ -9,7 +9,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Missing required fields.' }, { status: 400 });
     }
     // Check if user is already in the team
-    const { data: team, error: teamError } = await supabase
+    const client = supabaseAdmin || supabase;
+    const { data: team, error: teamError } = await client
       .from('teams')
       .select('members')
       .eq('id', teamId)
@@ -21,7 +22,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'User already in team.' }, { status: 409 });
     }
     // Check if a pending request already exists
-    const { data: existing, error: existingError } = await supabase
+    const { data: existing, error: existingError } = await client
       .from('join_requests')
       .select('id')
       .eq('team_id', teamId)
@@ -35,7 +36,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Join request already pending.' }, { status: 409 });
     }
     // Create join request
-    const { error: insertError } = await supabase
+    const { error: insertError } = await client
       .from('join_requests')
       .insert({
         team_id: teamId,

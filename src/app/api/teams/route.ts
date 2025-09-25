@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
 import type { Team, User, EventKey } from '@/lib/types';
 import { DEFAULT_EVENT } from '@/lib/types';
 
@@ -8,9 +8,10 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const id = searchParams.get('id');
   const eventDate = searchParams.get('event_date');
+  const client = supabaseAdmin || supabase;
 
   if (id) {
-    const { data: team, error } = await supabase
+    const { data: team, error } = await client
       .from('teams')
       .select('*')
       .eq('id', id)
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(team);
   }
 
-  const query = supabase
+  const query = (supabaseAdmin || supabase)
     .from('teams')
     .select('*');
 
@@ -60,12 +61,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Slot must start at 00 or 30 minutes.' }, { status: 400 });
     }
 
+    const clientWrite = supabaseAdmin || supabase;
     // Verify event registration
-    const { data: eventRegistration } = await supabase
+    const { data: eventRegistration } = await clientWrite
       .from('event_registration')
       .select('*')
       .eq('event_key', effectiveEvent)
-      .eq('user_email', userEmail);
+      .ilike('user_email', (userEmail || '').toLowerCase());
 
     if (!eventRegistration?.length) {
       return NextResponse.json({ message: `Email ${userEmail} not registered for this event.` }, { status: 403 });
@@ -78,7 +80,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Enforce slot capacity: max 2 teams per slot per day
-    const { data: slotTeams } = await supabase
+    const { data: slotTeams } = await clientWrite
       .from('teams')
       .select('id')
       .eq('event', effectiveEvent)
@@ -89,7 +91,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user is already in any team
-    const { data: existingTeams } = await supabase
+    const { data: existingTeams } = await clientWrite
       .from('teams')
       .select('*')
       .contains('members', [{ id: userId }]);
@@ -99,7 +101,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get user details
-    const { data: existingUser } = await supabase
+    const { data: existingUser } = await clientWrite
       .from('users')
       .select('*')
       .eq('id', userId)
@@ -126,7 +128,7 @@ export async function POST(request: NextRequest) {
       slot_time: slotTime,
     };
 
-    const { data: team, error } = await supabase
+    const { data: team, error } = await clientWrite
       .from('teams')
       .insert(newTeam)
       .select()
@@ -137,7 +139,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Remove the user from random pool
-    await supabase
+    await clientWrite
       .from('random_pool')
       .delete()
       .eq('user_id', userId)
@@ -145,7 +147,7 @@ export async function POST(request: NextRequest) {
       .eq('event_date', leaderEventDate);
 
     // Also remove any pending join requests from this user
-    await supabase
+    await clientWrite
       .from('join_requests')
       .delete()
       .eq('user_id', userId);

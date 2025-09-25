@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   const teamId = params.id;
@@ -8,7 +8,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     return NextResponse.json({ message: 'Missing teamId or memberId.' }, { status: 400 });
   }
   // Fetch team
-  const { data: team, error: teamError } = await supabase
+  const client = supabaseAdmin || supabase;
+  const { data: team, error: teamError } = await client
     .from('teams')
     .select('*')
     .eq('id', teamId)
@@ -25,11 +26,11 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   }
   // If no members left, delete team
   if (updatedMembers.length === 0) {
-    await supabase.from('teams').delete().eq('id', teamId);
+    await client.from('teams').delete().eq('id', teamId);
     return NextResponse.json({ message: 'Team disbanded (no members left).' });
   }
   // Update team
-  const { error: updateError } = await supabase
+  const { error: updateError } = await client
     .from('teams')
     .update({ members: updatedMembers, leader_id: newLeaderId })
     .eq('id', teamId);

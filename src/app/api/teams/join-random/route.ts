@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
 import { MAX_TEAM_MEMBERS } from '@/lib/db';
 import type { Team, User, EventKey } from '@/lib/types';
 import { DEFAULT_EVENT } from '@/lib/types';
@@ -20,11 +20,12 @@ export async function POST(request: NextRequest) {
     const effectiveEvent = event || DEFAULT_EVENT;
 
     // Verify event registration and extract event_date
-    const { data: eventRegistration } = await supabase
+    const client = supabaseAdmin || supabase;
+    const { data: eventRegistration } = await client
       .from('event_registration')
       .select('*')
       .eq('event_key', effectiveEvent)
-      .eq('user_email', userEmail);
+      .ilike('user_email', (userEmail || '').toLowerCase());
 
     if (!eventRegistration?.length) {
       return NextResponse.json({ message: `Email ${userEmail} not registered for this event.` }, { status: 403 });
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user is already in any team
-    const { data: existingTeams } = await supabase
+    const { data: existingTeams } = await client
       .from('teams')
       .select('*')
       .contains('members', [{ id: userId }]);
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Find teams with available slots on the same date
-    const { data: teams, error: teamsError } = await supabase
+    const { data: teams, error: teamsError } = await client
       .from('teams')
       .select('id, name, leader_id, members, event, event_date')
       .eq('event', effectiveEvent)
@@ -67,15 +68,32 @@ export async function POST(request: NextRequest) {
       }, { status: 404 });
     }
 
+    // Create join_requests for all available teams (dedupe existing)
+    for (const t of availableTeams) {
+      // Skip if a pending request already exists
+      const { data: existingReq } = await client
+        .from('join_requests')
+        .select('id')
+        .eq('team_id', t.id)
+        .eq('user_id', userId)
+        .eq('status', 'pending')
+        .maybeSingle();
+      if (!existingReq) {
+        await client
+          .from('join_requests')
+          .insert({ team_id: t.id, user_id: userId, user_name: userName, user_email: userEmail, status: 'pending' });
+      }
+    }
+
     // Enqueue in random_pool with event_date for admin batching
-    const { data: existingPool } = await supabase
+    const { data: existingPool } = await client
       .from('random_pool')
       .select('id')
       .eq('user_id', userId)
       .eq('event', effectiveEvent)
       .maybeSingle();
     if (!existingPool) {
-      const { error: enqueueErr } = await supabase
+      const { error: enqueueErr } = await client
         .from('random_pool')
         .insert({ user_id: userId, user_name: userName, user_email: userEmail, event: effectiveEvent, event_date: eventDate });
       if (enqueueErr) {
@@ -84,7 +102,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ 
-      message: 'You have been added to the random team queue for your date. Admins will assign teams shortly.'
+      message: 'Requests sent to team leaders and added to random queue for your date.'
     });
 
   } catch (error) {

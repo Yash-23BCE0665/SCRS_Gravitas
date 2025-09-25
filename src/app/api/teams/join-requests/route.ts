@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
 
 // GET: Fetch join requests for a leader's team(s)
 export async function GET(request: NextRequest) {
@@ -9,7 +9,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: 'Missing leaderId.' }, { status: 400 });
   }
   // Find all teams where this user is leader
-  const { data: teams, error: teamError } = await supabase
+  const client = supabaseAdmin || supabase;
+  const { data: teams, error: teamError } = await client
     .from('teams')
     .select('id')
     .eq('leader_id', leaderId);
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json([]);
   }
   // Fetch join requests for these teams
-  const { data: requests, error } = await supabase
+  const { data: requests, error } = await client
     .from('join_requests')
     .select('*')
     .in('team_id', teamIds)
@@ -40,7 +41,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Missing or invalid fields.' }, { status: 400 });
     }
     // Get the join request
-    const { data: joinRequest, error: fetchError } = await supabase
+    const client = supabaseAdmin || supabase;
+    const { data: joinRequest, error: fetchError } = await client
       .from('join_requests')
       .select('*')
       .eq('id', requestId)
@@ -52,14 +54,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Request already handled.' }, { status: 400 });
     }
     if (action === 'reject') {
-      await supabase
+      await client
         .from('join_requests')
         .update({ status: 'rejected' })
         .eq('id', requestId);
       return NextResponse.json({ message: 'Request rejected.' });
     }
     // Accept: add user to team if not already present and not full
-    const { data: team, error: teamError } = await supabase
+    const { data: team, error: teamError } = await client
       .from('teams')
       .select('*')
       .eq('id', joinRequest.team_id)
@@ -68,14 +70,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Team not found.' }, { status: 404 });
     }
     if (team.members.some((m: any) => m.id === joinRequest.user_id)) {
-      await supabase
+      await client
         .from('join_requests')
         .update({ status: 'rejected' })
         .eq('id', requestId);
       return NextResponse.json({ message: 'User already in team.' }, { status: 409 });
     }
     if (team.members.length >= 4) {
-      await supabase
+      await client
         .from('join_requests')
         .update({ status: 'rejected' })
         .eq('id', requestId);
@@ -87,18 +89,23 @@ export async function POST(request: NextRequest) {
       name: joinRequest.user_name,
       email: joinRequest.user_email,
     }];
-    await supabase
+    await client
       .from('teams')
       .update({ members: updatedMembers })
       .eq('id', team.id);
-    // Mark request as accepted
-    await supabase
+    // Mark accepted and remove all other pending requests for this user
+    await client
       .from('join_requests')
       .update({ status: 'accepted' })
       .eq('id', requestId);
+    await client
+      .from('join_requests')
+      .delete()
+      .eq('user_id', joinRequest.user_id)
+      .eq('status', 'pending');
 
     // Remove user from random pool if present
-    await supabase
+    await client
       .from('random_pool')
       .delete()
       .eq('user_id', joinRequest.user_id);

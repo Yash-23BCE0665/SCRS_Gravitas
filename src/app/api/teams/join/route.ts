@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
 import type { User, EventKey } from '@/lib/types';
 import { MAX_TEAM_MEMBERS } from '@/lib/db';
 import { DEFAULT_EVENT } from '@/lib/types';
@@ -15,8 +15,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Missing required fields.' }, { status: 400 });
     }
 
+    const client = supabaseAdmin || supabase;
     // Get team details
-    const { data: team, error: teamError } = await supabase
+    const { data: team, error: teamError } = await client
       .from('teams')
       .select('*')
       .eq('id', teamId)
@@ -32,11 +33,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify event registration
-    const { data: eventRegistration } = await supabase
+    const { data: eventRegistration } = await client
       .from('event_registration')
       .select('*')
       .eq('event_key', effectiveEvent)
-      .eq('user_email', userEmail);
+      .ilike('user_email', (userEmail || '').toLowerCase());
     // Enforce same event_date as team
     const userEventDate = eventRegistration?.[0]?.event_date as string | undefined;
     if (!userEventDate) {
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user is already in any team
-    const { data: existingTeams } = await supabase
+    const { data: existingTeams } = await client
       .from('teams')
       .select('*')
       .contains('members', [{ id: userId }]);
@@ -68,7 +69,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get user details from the database
-    const { data: existingUser } = await supabase
+    const { data: existingUser } = await client
       .from('users')
       .select('*')
       .eq('id', userId)
@@ -86,7 +87,7 @@ export async function POST(request: NextRequest) {
     };
 
     // Update team with new member
-    const { data: updatedTeam, error: updateError } = await supabase
+    const { data: updatedTeam, error: updateError } = await client
       .from('teams')
       .update({ 
         members: [...currentMembers, memberData]
@@ -100,7 +101,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Remove user from random pool if they were in it
-    await supabase
+    await client
       .from('random_pool')
       .delete()
       .eq('user_id', userId)
@@ -108,7 +109,7 @@ export async function POST(request: NextRequest) {
       .eq('event_date', (team as any).event_date);
 
     // Delete any pending join requests from this user
-    await supabase
+    await client
       .from('join_requests')
       .delete()
       .eq('user_id', userId);

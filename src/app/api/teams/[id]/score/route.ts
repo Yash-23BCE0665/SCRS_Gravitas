@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
 import type { Team } from '@/lib/types';
 
 interface Context {
@@ -13,7 +13,8 @@ export async function PATCH(request: NextRequest, context: Context) {
     const { score, name } = await request.json() as Partial<Pick<Team, 'score' | 'name'>>;
 
     // First check if the team exists
-    const { data: team, error: fetchError } = await supabase
+    const client = supabaseAdmin || supabase;
+    const { data: team, error: fetchError } = await client
       .from('teams')
       .select('name')
       .eq('id', teamId)
@@ -46,7 +47,7 @@ export async function PATCH(request: NextRequest, context: Context) {
       return NextResponse.json({ message: 'No fields to update.' }, { status: 400 });
     }
 
-    const { error: updateError } = await supabase
+    const { error: updateError } = await client
       .from('teams')
       .update(updates)
       .eq('id', teamId);

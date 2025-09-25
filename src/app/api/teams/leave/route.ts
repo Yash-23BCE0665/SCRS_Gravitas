@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
 
 // POST to leave a team
 export async function POST(request: NextRequest) {
@@ -11,7 +11,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Fetch the team from Supabase
-    const { data: team, error: fetchError } = await supabase
+    const client = supabaseAdmin || supabase;
+    const { data: team, error: fetchError } = await client
       .from('teams')
       .select('*')
       .eq('id', teamId)
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest) {
       const updatedMembers = members.filter((m: any) => m.id !== userId);
       if (updatedMembers.length === 0) {
         // Last member, disband team
-        const { error: deleteError } = await supabase
+        const { error: deleteError } = await client
           .from('teams')
           .delete()
           .eq('id', teamId);
@@ -40,12 +41,12 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ message: 'Error disbanding team.' }, { status: 500 });
         }
         // Add user back to random pool with date context
-        const { data: userRow } = await supabase
+        const { data: userRow } = await client
           .from('users')
           .select('name, email')
           .eq('id', userId)
           .single();
-        await supabase
+        await client
           .from('random_pool')
           .insert([{
             user_id: userId,
@@ -58,7 +59,7 @@ export async function POST(request: NextRequest) {
       } else {
         // Assign new leader (first member in the list)
         const newLeaderId = updatedMembers[0].id;
-        const { error: updateError } = await supabase
+        const { error: updateError } = await client
           .from('teams')
           .update({ members: updatedMembers, leader_id: newLeaderId })
           .eq('id', teamId);
@@ -66,12 +67,12 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ message: 'Error updating team.' }, { status: 500 });
         }
         // Add user back to random pool with date context
-        const { data: userRow } = await supabase
+        const { data: userRow } = await client
           .from('users')
           .select('name, email')
           .eq('id', userId)
           .single();
-        await supabase
+        await client
           .from('random_pool')
           .insert([{
             user_id: userId,
@@ -86,7 +87,7 @@ export async function POST(request: NextRequest) {
 
     // If the user is a regular member
     const updatedMembers = members.filter((m: any) => m.id !== userId);
-    const { error: updateError } = await supabase
+    const { error: updateError } = await client
       .from('teams')
       .update({ members: updatedMembers })
       .eq('id', teamId);
@@ -94,12 +95,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Error updating team.' }, { status: 500 });
     }
     // Add user back to random pool with date context
-    const { data: userRow } = await supabase
+    const { data: userRow } = await client
       .from('users')
       .select('name, email')
       .eq('id', userId)
       .single();
-    await supabase
+    await client
       .from('random_pool')
       .insert([{
         user_id: userId,

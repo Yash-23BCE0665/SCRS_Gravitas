@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
 import type { AdminUser } from '@/lib/types';
 
 export async function POST(request: NextRequest) {
@@ -13,8 +13,9 @@ export async function POST(request: NextRequest) {
     }
 
 
-    // Query the admin directly from Supabase
-    const { data: admin, error } = await supabase
+    // Query the admin using server client to bypass RLS
+    const client = supabaseAdmin || supabase;
+    const { data: admin, error } = await client
       .from('admin')
       .select('id, username, password')
       .eq('username', username)

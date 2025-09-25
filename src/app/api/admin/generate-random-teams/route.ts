@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
 import { DEFAULT_EVENT } from '@/lib/types';
 
 // GET: List unassigned users for a given event key
@@ -9,7 +9,8 @@ export async function GET(request: NextRequest) {
     const event = searchParams.get('event') || 'escape-exe-ii';
 
     // 1) Gather all users from users table
-    const { data: allUsers, error: usersError } = await supabase
+    const client = supabaseAdmin || supabase;
+    const { data: allUsers, error: usersError } = await client
       .from('users')
       .select('id, name, email');
     if (usersError) {
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 2) Gather registered users for the event
-    const { data: registrations, error: regError } = await supabase
+    const { data: registrations, error: regError } = await client
       .from('event_registration')
       .select('user_id')
       .eq('event_key', event);
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest) {
     const registeredIds: string[] = (registrations || []).map((r: any) => r.user_id);
 
     // 3) Find all team member ids for this event
-    const { data: teams, error: teamsError } = await supabase
+    const { data: teams, error: teamsError } = await client
       .from('teams')
       .select('id, members')
       .eq('event', event);

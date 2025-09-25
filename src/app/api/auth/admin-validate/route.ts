@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
   try {
@@ -19,7 +19,8 @@ export async function GET(request: NextRequest) {
       }
 
       // Verify that the admin exists
-      const { data: admin, error } = await supabase
+      const client = supabaseAdmin || supabase;
+      const { data: admin, error } = await client
         .from('admin')
         .select('id, username')
         .eq('username', session.username)

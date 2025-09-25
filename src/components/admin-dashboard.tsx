@@ -22,7 +22,8 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Users, Save, Loader2, Edit, Crown, LogOut, UserX } from "lucide-react";
+import { Users, Save, Loader2, Edit, Crown, LogOut, UserX, GitMerge } from "lucide-react";
+import { useMemo } from "react";
 
 
 
@@ -34,8 +35,60 @@ export default function AdminDashboard() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [poolCount, setPoolCount] = useState<number>(0);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [mergeFromId, setMergeFromId] = useState<string>("");
+  const [mergeToId, setMergeToId] = useState<string>("");
+  const [isMerging, setIsMerging] = useState(false);
   const { toast } = useToast();
   const router = useRouter();
+  function RandomPoolList() {
+    const [members, setMembers] = useState<{ user_id: string; user_name: string; user_email: string; event_date: string }[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+      let active = true;
+      (async () => {
+        try {
+          const res = await fetch('/api/admin/random-pool?list=true');
+          const json = await res.json();
+          if (!res.ok) throw new Error(json.message || 'Failed to load random pool');
+          if (active) setMembers(json.members || []);
+        } catch (e) {
+          if (active) setError(e instanceof Error ? e.message : 'Unknown error');
+        } finally {
+          if (active) setLoading(false);
+        }
+      })();
+      return () => { active = false; }
+    }, []);
+
+    if (loading) return <div className="p-4 text-sm text-muted-foreground">Loading...</div>;
+    if (error) return <div className="p-4 text-sm text-red-500">{error}</div>;
+    if (!members.length) return <div className="p-4 text-sm">No members in random pool.</div>;
+
+    return (
+      <div className="max-h-[60vh] overflow-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Email</TableHead>
+              <TableHead>Date</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {members.map((m) => (
+              <TableRow key={m.user_id}>
+                <TableCell>{m.user_name}</TableCell>
+                <TableCell className="font-mono">{m.user_email}</TableCell>
+                <TableCell className="font-mono">{m.event_date}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    );
+  }
 
   // Remove member handler (must be inside component for hooks)
   const handleRemoveMember = async (teamId: string, memberId: string) => {
@@ -129,7 +182,16 @@ export default function AdminDashboard() {
         throw new Error("Failed to fetch teams");
       }
       const data: Team[] = await res.json();
-      setTeams(data);
+      // Sort by event_date asc, then slot_time asc
+      const sorted = [...data].sort((a, b) => {
+        const da = (a as any).event_date || '';
+        const db = (b as any).event_date || '';
+        if (da !== db) return da.localeCompare(db);
+        const sa = (a as any).slot_time || '';
+        const sb = (b as any).slot_time || '';
+        return sa.localeCompare(sb);
+      });
+      setTeams(sorted);
     } catch (error) {
       toast({
         variant: "destructive",
@@ -283,6 +345,97 @@ export default function AdminDashboard() {
             {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
             Generate Random Teams
           </Button>
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Users className="mr-2 h-4 w-4" /> View Random Pool
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Random Pool Members</DialogTitle>
+              </DialogHeader>
+              <RandomPoolList />
+            </DialogContent>
+          </Dialog>
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="secondary" size="sm">
+                <GitMerge className="mr-2 h-4 w-4" /> Merge Teams
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Merge Teams (same event and date only)</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm mb-1">From Team</label>
+                  <select
+                    className="w-full border rounded px-3 py-2 bg-background"
+                    value={mergeFromId}
+                    onChange={(e) => setMergeFromId(e.target.value)}
+                  >
+                    <option value="">Select source team</option>
+                    {teams.map(t => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} — {t.event} — {t.event_date || ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm mb-1">Into Team</label>
+                  <select
+                    className="w-full border rounded px-3 py-2 bg-background"
+                    value={mergeToId}
+                    onChange={(e) => setMergeToId(e.target.value)}
+                  >
+                    <option value="">Select target team</option>
+                    {teams.map(t => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} — {t.event} — {t.event_date || ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <Button
+                  onClick={async () => {
+                    if (!mergeFromId || !mergeToId) {
+                      toast({ variant: "destructive", title: "Missing selection", description: "Choose both teams." });
+                      return;
+                    }
+                    if (mergeFromId === mergeToId) {
+                      toast({ variant: "destructive", title: "Invalid selection", description: "Teams must be different." });
+                      return;
+                    }
+                    setIsMerging(true);
+                    try {
+                      const res = await fetch('/api/admin/merge-teams', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ sourceTeamId: mergeFromId, targetTeamId: mergeToId })
+                      });
+                      const result = await res.json();
+                      if (!res.ok) throw new Error(result.message || 'Merge failed');
+                      toast({ title: 'Merged', description: result.message });
+                      setMergeFromId("");
+                      setMergeToId("");
+                      fetchTeams();
+                    } catch (e) {
+                      toast({ variant: 'destructive', title: 'Merge error', description: e instanceof Error ? e.message : 'Unknown error' });
+                    } finally {
+                      setIsMerging(false);
+                    }
+                  }}
+                  disabled={isMerging}
+                >
+                  {isMerging ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <GitMerge className="mr-2 h-4 w-4" />}
+                  Merge
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
           <Button onClick={handleLogout} variant="outline" size="sm">
               <LogOut className="mr-2 h-4 w-4" />
               Logout
@@ -295,6 +448,8 @@ export default function AdminDashboard() {
             <TableRow>
               <TableHead>Team Name</TableHead>
               <TableHead>Event</TableHead>
+              <TableHead>Date</TableHead>
+              <TableHead>Slot</TableHead>
               <TableHead className="text-center">Members</TableHead>
               <TableHead className="text-right">Score</TableHead>
               <TableHead className="text-center">Actions</TableHead>
@@ -312,6 +467,8 @@ export default function AdminDashboard() {
                 <TableRow key={team.id}>
                   <TableCell className="font-medium">{team.name}</TableCell>
                   <TableCell>{EVENTS.find(e => e.key === team.event)?.name}</TableCell>
+                  <TableCell className="font-mono">{(team as any).event_date || '-'}</TableCell>
+                  <TableCell className="font-mono">{(team as any).slot_time?.slice(0,5) || '-'}</TableCell>
                   <TableCell className="text-center">
                     <Dialog>
                       <DialogTrigger asChild>

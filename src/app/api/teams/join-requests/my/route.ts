@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
 
 // GET: Fetch join requests made by a user
 export async function GET(request: NextRequest) {
@@ -8,7 +8,8 @@ export async function GET(request: NextRequest) {
   if (!userId) {
     return NextResponse.json({ message: 'Missing userId.' }, { status: 400 });
   }
-  const { data, error } = await supabase
+  const client = supabaseAdmin || supabase;
+  const { data, error } = await client
     .from('join_requests')
     .select('*')
     .eq('user_id', userId)

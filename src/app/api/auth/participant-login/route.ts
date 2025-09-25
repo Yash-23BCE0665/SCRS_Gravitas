@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
+
+export const runtime = 'nodejs';
 import type { User } from '@/lib/types';
 
 export async function POST(request: NextRequest) {
@@ -11,18 +13,35 @@ export async function POST(request: NextRequest) {
       if (!email) {
         return NextResponse.json({ message: 'Missing email from Google login.' }, { status: 400 });
       }
-      // Check if email is registered for any event
-      const { data: regData } = await supabase
+      // Check if email is registered for any event (case-insensitive)
+      const client = supabaseAdmin || supabase;
+      const normalizedEmail = (email || '').trim().toLowerCase();
+      let { data: regData } = await client
         .from('event_registration')
         .select('*')
-        .eq('user_email', email.toLowerCase());
+        .ilike('user_email', normalizedEmail);
+      if (!regData || regData.length === 0) {
+        // Fallback across VIT domains (vit.ac.in <-> vitstudent.ac.in)
+        const alt = normalizedEmail.endsWith('@vit.ac.in')
+          ? normalizedEmail.replace('@vit.ac.in', '@vitstudent.ac.in')
+          : normalizedEmail.endsWith('@vitstudent.ac.in')
+            ? normalizedEmail.replace('@vitstudent.ac.in', '@vit.ac.in')
+            : null;
+        if (alt) {
+          const res = await client
+            .from('event_registration')
+            .select('*')
+            .ilike('user_email', alt);
+          regData = res.data as any;
+        }
+      }
       if (!regData || regData.length === 0) {
         return NextResponse.json({ message: 'You are not registered for any event.' }, { status: 403 });
       }
-      // Upsert user in users table
-      const { data: user, error: userError } = await supabase
+      // Upsert user in users table (normalize email lower-case)
+      const { data: user, error: userError } = await client
         .from('users')
-        .upsert({ email: email.toLowerCase(), name }, { onConflict: 'email' })
+        .upsert({ email: normalizedEmail, name }, { onConflict: 'email' })
         .select()
         .single();
       if (userError) {
@@ -30,29 +49,30 @@ export async function POST(request: NextRequest) {
       }
 
       // Add user to random pool if not already in a team
-      const { data: userTeams } = await supabase
+      const { data: userTeams } = await client
         .from('teams')
         .select('id')
         .contains('members', [{ id: user.id }]);
 
       if (!userTeams || userTeams.length === 0) {
-        // Add to random pool if not already there
-        const { data: existingPool } = await supabase
+        // Add to random pool if not already there, include event_date when available
+        const { data: existingPool } = await client
           .from('random_pool')
           .select('id')
           .eq('user_id', user.id)
+          .eq('event', regData?.[0]?.event_key)
           .maybeSingle();
 
         if (!existingPool) {
-          const { error: poolError } = await supabase
+          const { error: poolError } = await client
             .from('random_pool')
             .insert({
               user_id: user.id,
               user_name: user.name,
               user_email: user.email.toLowerCase(),
-              event: regData[0].event_key // Use the event from registration
+              event: regData?.[0]?.event_key,
+              event_date: regData?.[0]?.event_date || null,
             });
-          
           if (poolError) {
             console.error('Error adding user to random pool:', poolError);
           }
@@ -60,18 +80,18 @@ export async function POST(request: NextRequest) {
       }
 
       // Auto-enqueue user into random pool if not in any team
-      const { data: existingTeams } = await supabase
+      const { data: existingTeams } = await client
         .from('teams')
         .select('id')
-        .contains('members', [{ email: email.toLowerCase() }]);
+        .contains('members', [{ email: normalizedEmail }]);
       if (!existingTeams || existingTeams.length === 0) {
-        const { data: reg } = await supabase
+        const { data: reg } = await client
           .from('event_registration')
           .select('*')
-          .eq('user_email', email.toLowerCase())
+          .ilike('user_email', normalizedEmail)
           .maybeSingle();
         if (reg?.event_date && reg?.event_key === 'escape-exe-ii') {
-          await supabase
+          await client
             .from('random_pool')
             .upsert({
               user_id: user.id,
@@ -90,36 +110,38 @@ export async function POST(request: NextRequest) {
       }
 
       let foundUser: User | null = null;
+      const client = supabaseAdmin || supabase;
+      const normalizedIdentifier = String(identifier).trim();
 
       // Identifier is an email
-      if (typeof identifier === 'string' && identifier.includes('@')) {
-        const { data, error } = await supabase
+      if (typeof normalizedIdentifier === 'string' && normalizedIdentifier.includes('@')) {
+        const { data, error } = await client
           .from('users')
           .select('id, name, email, username, password')
-          .eq('email', identifier.toLowerCase())
+          .eq('email', normalizedIdentifier.toLowerCase())
           .single();
         if (!error && data) foundUser = data as unknown as User;
       }
 
       // Try by username if not found and identifier has no '@'
-      if (!foundUser && typeof identifier === 'string' && !identifier.includes('@')) {
-        const { data, error } = await supabase
+      if (!foundUser && typeof normalizedIdentifier === 'string' && !normalizedIdentifier.includes('@')) {
+        const { data, error } = await client
           .from('users')
           .select('id, name, email, username, password')
-          .eq('username', identifier)
+          .eq('username', normalizedIdentifier)
           .maybeSingle();
         if (!error && data) foundUser = data as unknown as User;
       }
 
       // Try by registration number (via event_registration -> email)
-      if (!foundUser && typeof identifier === 'string' && !identifier.includes('@')) {
-        const { data: reg } = await supabase
+      if (!foundUser && typeof normalizedIdentifier === 'string' && !normalizedIdentifier.includes('@')) {
+        const { data: reg } = await client
           .from('event_registration')
           .select('user_email')
-          .eq('reg_no', identifier)
+          .eq('reg_no', normalizedIdentifier)
           .maybeSingle();
         if (reg?.user_email) {
-          const { data } = await supabase
+          const { data } = await client
             .from('users')
             .select('id, name, email, username, password')
             .eq('email', reg.user_email.toLowerCase())
@@ -137,18 +159,18 @@ export async function POST(request: NextRequest) {
       }
 
       // Auto-enqueue on basic login if user is teamless
-      const { data: existingTeams2 } = await supabase
+      const { data: existingTeams2 } = await client
         .from('teams')
         .select('id')
         .contains('members', [{ email: foundUser.email.toLowerCase() }]);
       if (!existingTeams2 || existingTeams2.length === 0) {
-        const { data: reg2 } = await supabase
+        const { data: reg2 } = await client
           .from('event_registration')
           .select('*')
           .eq('user_email', foundUser.email.toLowerCase())
           .maybeSingle();
         if (reg2?.event_date && reg2?.event_key === 'escape-exe-ii') {
-          await supabase
+          await client
             .from('random_pool')
             .upsert({
               user_id: foundUser.id,

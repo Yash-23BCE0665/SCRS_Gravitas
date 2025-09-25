@@ -75,6 +75,7 @@ type FormValues = z.infer<typeof formSchema>;
 
 export default function HomePage() {
   const { toast } = useToast();
+  const [isMounted, setIsMounted] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentTeam, setCurrentTeam] = useState<Team | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -83,6 +84,7 @@ export default function HomePage() {
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
 
   useEffect(() => {
+    setIsMounted(true);
     const user = sessionStorage.getItem("gravitas-user");
     const teamId = sessionStorage.getItem("gravitas-teamId");
     if (user) {
@@ -308,7 +310,7 @@ export default function HomePage() {
 
   const isLeader = currentUser?.id === currentTeam?.leader_id;
 
-  if (isTeamViewLoading) {
+  if (!isMounted || isTeamViewLoading) {
     return (
       <div className="flex justify-center items-center h-64">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
