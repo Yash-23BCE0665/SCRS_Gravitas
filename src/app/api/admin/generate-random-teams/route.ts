@@ -92,11 +92,25 @@ export async function POST(request: NextRequest) {
 
     // Map pool users to their full details and keep event_date
     type PoolUser = { id: string; name: string; email: string; event_date: string };
-    const unassignedUsers: PoolUser[] = poolUsers.map(pu => {
+    const poolUsersWithDetails: PoolUser[] = poolUsers.map(pu => {
       const user = allUsers.find(u => u.id === pu.user_id);
       if (!user) return null;
       return { id: user.id, name: user.name, email: user.email, event_date: pu.event_date } as PoolUser;
     }).filter(Boolean) as PoolUser[];
+
+    // 4. Filter out users who are already in teams (CRITICAL FIX)
+    const memberSet = new Set<string>();
+    (teams || []).forEach((t: any) => {
+      (t.members || []).forEach((m: any) => memberSet.add(m.id));
+    });
+
+    const unassignedUsers: PoolUser[] = poolUsersWithDetails.filter(user => !memberSet.has(user.id));
+    
+    // Log skipped users for debugging
+    const skippedUsers = poolUsersWithDetails.filter(user => memberSet.has(user.id));
+    if (skippedUsers.length > 0) {
+      console.log(`Skipped ${skippedUsers.length} users already in teams:`, skippedUsers.map(u => u.name));
+    }
 
     const createdTeamIds: string[] = [];
     const assignedToExisting: any[] = [];

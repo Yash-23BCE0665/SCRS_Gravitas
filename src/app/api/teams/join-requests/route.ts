@@ -60,6 +60,20 @@ export async function POST(request: NextRequest) {
         .eq('id', requestId);
       return NextResponse.json({ message: 'Request rejected.' });
     }
+    // Check if user is already in ANY team before accepting
+    const { data: existingTeams } = await client
+      .from('teams')
+      .select('*')
+      .contains('members', [{ id: joinRequest.user_id }]);
+
+    if (existingTeams && existingTeams.length > 0) {
+      await client
+        .from('join_requests')
+        .update({ status: 'rejected' })
+        .eq('id', requestId);
+      return NextResponse.json({ message: 'User is already in a team.' }, { status: 409 });
+    }
+
     // Accept: add user to team if not already present and not full
     const { data: team, error: teamError } = await client
       .from('teams')
@@ -68,13 +82,6 @@ export async function POST(request: NextRequest) {
       .single();
     if (teamError || !team) {
       return NextResponse.json({ message: 'Team not found.' }, { status: 404 });
-    }
-    if (team.members.some((m: any) => m.id === joinRequest.user_id)) {
-      await client
-        .from('join_requests')
-        .update({ status: 'rejected' })
-        .eq('id', requestId);
-      return NextResponse.json({ message: 'User already in team.' }, { status: 409 });
     }
     if (team.members.length >= 4) {
       await client

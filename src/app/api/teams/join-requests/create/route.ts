@@ -8,8 +8,19 @@ export async function POST(request: NextRequest) {
     if (!teamId || !userId || !userName || !userEmail) {
       return NextResponse.json({ message: 'Missing required fields.' }, { status: 400 });
     }
-    // Check if user is already in the team
     const client = supabaseAdmin || supabase;
+    
+    // Check if user is already in ANY team (not just this one)
+    const { data: existingTeams } = await client
+      .from('teams')
+      .select('*')
+      .contains('members', [{ id: userId }]);
+
+    if (existingTeams && existingTeams.length > 0) {
+      return NextResponse.json({ message: `User is already in a team.` }, { status: 409 });
+    }
+
+    // Check if the specific team exists
     const { data: team, error: teamError } = await client
       .from('teams')
       .select('members')
@@ -17,9 +28,6 @@ export async function POST(request: NextRequest) {
       .single();
     if (teamError || !team) {
       return NextResponse.json({ message: 'Team not found.' }, { status: 404 });
-    }
-    if (team.members.some((m: any) => m.id === userId)) {
-      return NextResponse.json({ message: 'User already in team.' }, { status: 409 });
     }
     // Check if a pending request already exists
     const { data: existing, error: existingError } = await client
