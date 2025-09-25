@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 import { SupabaseAuthListener } from "@/components/supabase-auth-listener";
 
 export const metadata: Metadata = {
-  title: 'Gravitas: Shadows of VIT',
+  title: 'escape-exe',
   description: 'A VIT event companion app.',
 };
 
