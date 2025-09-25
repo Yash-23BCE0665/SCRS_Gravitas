@@ -3,11 +3,11 @@ import { supabase, supabaseAdmin } from '@/lib/supabase';
 import { MAX_TEAM_MEMBERS } from '@/lib/db';
 
 // POST /api/admin/merge-teams
-// Body: { sourceTeamId: string, targetTeamId: string }
-// Merges source team members into target team, enforcing same event and date, and capacity
+// Body: { sourceTeamId: string, targetTeamId: string, maxTransfer?: number }
+// Flexibly merges source team members into target team, enforcing same event and date, and capacity
 export async function POST(request: NextRequest) {
   try {
-    const { sourceTeamId, targetTeamId } = await request.json();
+    const { sourceTeamId, targetTeamId, maxTransfer } = await request.json();
     if (!sourceTeamId || !targetTeamId) {
       return NextResponse.json({ message: 'Missing sourceTeamId or targetTeamId.' }, { status: 400 });
     }
@@ -50,12 +50,24 @@ export async function POST(request: NextRequest) {
     const targetMemberIds = new Set<string>(targetMembers.map((m: any) => m.id));
     const uniqueSourceMembers = sourceMembers.filter((m: any) => !targetMemberIds.has(m.id));
 
-    const mergedMembers = [...targetMembers, ...uniqueSourceMembers];
-    if (mergedMembers.length > MAX_TEAM_MEMBERS) {
-      return NextResponse.json({ message: `Merged team would exceed capacity of ${MAX_TEAM_MEMBERS}.` }, { status: 400 });
+    if (uniqueSourceMembers.length === 0) {
+      return NextResponse.json({ message: 'No unique members to transfer from source team.' }, { status: 400 });
     }
 
-    // Update target team members first
+    // Calculate how many members can be transferred
+    const availableSlots = MAX_TEAM_MEMBERS - targetMembers.length;
+    const transferLimit = maxTransfer ? Math.min(maxTransfer, availableSlots) : availableSlots;
+    const membersToTransfer = uniqueSourceMembers.slice(0, transferLimit);
+    const remainingSourceMembers = uniqueSourceMembers.slice(transferLimit);
+
+    if (membersToTransfer.length === 0) {
+      return NextResponse.json({ 
+        message: `Target team is full. Cannot transfer any members.` 
+      }, { status: 400 });
+    }
+
+    // Update target team with transferred members
+    const mergedMembers = [...targetMembers, ...membersToTransfer];
     const { error: updateErr } = await client
       .from('teams')
       .update({ members: mergedMembers })
@@ -64,19 +76,38 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Failed to update target team.' }, { status: 500 });
     }
 
-    // Delete source team after successful update
-    const { error: deleteErr } = await client
-      .from('teams')
-      .delete()
-      .eq('id', sourceTeam.id);
-    if (deleteErr) {
-      return NextResponse.json({ message: 'Failed to delete source team after merge.' }, { status: 500 });
+    // Handle source team based on remaining members
+    let sourceTeamAction = '';
+    if (remainingSourceMembers.length === 0) {
+      // All members transferred, delete source team
+      const { error: deleteErr } = await client
+        .from('teams')
+        .delete()
+        .eq('id', sourceTeam.id);
+      if (deleteErr) {
+        return NextResponse.json({ message: 'Failed to delete source team after merge.' }, { status: 500 });
+      }
+      sourceTeamAction = 'deleted';
+    } else {
+      // Some members remain, update source team with remaining members
+      const { error: updateSourceErr } = await client
+        .from('teams')
+        .update({ members: remainingSourceMembers })
+        .eq('id', sourceTeam.id);
+      if (updateSourceErr) {
+        return NextResponse.json({ message: 'Failed to update source team after partial merge.' }, { status: 500 });
+      }
+      sourceTeamAction = 'updated';
     }
 
     return NextResponse.json({ 
       message: 'Teams merged successfully.', 
       targetTeamId: targetTeam.id,
-      mergedCount: uniqueSourceMembers.length 
+      sourceTeamId: sourceTeam.id,
+      transferredCount: membersToTransfer.length,
+      remainingInSource: remainingSourceMembers.length,
+      sourceTeamAction,
+      transferredMembers: membersToTransfer.map((m: any) => ({ id: m.id, name: m.name, email: m.email }))
     });
   } catch (error) {
     return NextResponse.json({ message: 'An internal server error occurred.' }, { status: 500 });
