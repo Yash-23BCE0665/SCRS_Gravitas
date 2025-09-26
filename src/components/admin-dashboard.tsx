@@ -48,6 +48,8 @@ export default function AdminDashboard() {
     const [members, setMembers] = useState<{ user_id: string; user_name: string; user_email: string; event_date: string }[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [assigning, setAssigning] = useState<Record<string, boolean>>({});
+    const [selectedTeam, setSelectedTeam] = useState<Record<string, string>>({});
 
     useEffect(() => {
       let active = true;
@@ -70,6 +72,44 @@ export default function AdminDashboard() {
     if (error) return <div className="p-4 text-sm text-red-500">{error}</div>;
     if (!members.length) return <div className="p-4 text-sm">No members in random pool.</div>;
 
+    const availableTeamsByDate = useMemo(() => {
+      const byDate: Record<string, Team[]> = {} as any;
+      teams.forEach((t) => {
+        const d = (t as any).event_date || '';
+        if (!byDate[d]) byDate[d] = [];
+        byDate[d].push(t);
+      });
+      return byDate;
+    }, [teams]);
+
+    const handleAssign = async (userId: string, date: string) => {
+      const teamId = selectedTeam[userId];
+      if (!teamId) {
+        toast({ variant: 'destructive', title: 'Select a team', description: 'Choose a team to assign this member.' });
+        return;
+      }
+      setAssigning(prev => ({ ...prev, [userId]: true }));
+      try {
+        const res = await fetch('/api/admin/assign-from-pool', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, teamId })
+        });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.message || 'Assignment failed');
+        toast({ title: 'Assigned', description: result.message || 'User assigned to team.' });
+        // Optimistically remove from list
+        setMembers(prev => prev.filter(m => m.user_id !== userId));
+        // Refresh outer data if available
+        fetchTeams?.();
+        fetchPool?.();
+      } catch (e) {
+        toast({ variant: 'destructive', title: 'Error', description: e instanceof Error ? e.message : 'Unknown error' });
+      } finally {
+        setAssigning(prev => ({ ...prev, [userId]: false }));
+      }
+    };
+
     return (
       <div className="max-h-[60vh] overflow-auto">
         <Table>
@@ -78,6 +118,8 @@ export default function AdminDashboard() {
               <TableHead>Name</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>Date</TableHead>
+              <TableHead>Assign to Team</TableHead>
+              <TableHead className="text-right">Action</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -86,6 +128,32 @@ export default function AdminDashboard() {
                 <TableCell>{m.user_name}</TableCell>
                 <TableCell className="font-mono">{m.user_email}</TableCell>
                 <TableCell className="font-mono">{m.event_date}</TableCell>
+                <TableCell>
+                  <select
+                    className="w-full border rounded px-2 py-1 bg-background"
+                    value={selectedTeam[m.user_id] || ''}
+                    onChange={(e) => setSelectedTeam(prev => ({ ...prev, [m.user_id]: e.target.value }))}
+                  >
+                    <option value="">Select team (same date)</option>
+                    {(availableTeamsByDate[m.event_date] || [])
+                      .filter(t => (t.members?.length || 0) < 4)
+                      .map(t => (
+                        <option key={t.id} value={t.id}>
+                          {t.name} — {(t as any).slot_time?.slice(0,5) || '-'} ({t.members.length}/4)
+                        </option>
+                      ))}
+                  </select>
+                </TableCell>
+                <TableCell className="text-right">
+                  <Button
+                    size="sm"
+                    disabled={assigning[m.user_id]}
+                    onClick={() => handleAssign(m.user_id, m.event_date)}
+                  >
+                    {assigning[m.user_id] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    Assign
+                  </Button>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
